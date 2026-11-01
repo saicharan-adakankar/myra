@@ -3,6 +3,8 @@
 A personal tool for viewing, editing and removing hidden metadata in files. It runs entirely in
 the browser from a single `index.html` — no backend, no accounts, nothing is uploaded.
 
+[**MYRA live →**](https://saicharan-adakankar.github.io/myra/)
+
 ## What it can do
 
 - **Read** the hidden metadata in a file and group it into Identity, Origin, Timeline, Content and Security.
