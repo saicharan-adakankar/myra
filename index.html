@@ -2,55 +2,59 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MIRA — Metadata Intelligence & Redaction Assistant</title>
+<title>MYRA — My Redact Assistant</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/piexifjs/2.0.0-beta.8/piexif.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/piexifjs/1.0.6/piexif.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.min.js"></script>
 <style>
   :root{
-    --page-bg:#EFEEEC;
+    /* Light mode — crisp white cards on a soft neutral page, deep
+       near-black text for real contrast rather than a washed-out gray. */
+    --page-bg:#EDECEA;
     --bg:#ffffff;
-    --bg-subtle:#FAF9F7;
-    --surface:#FCFBFA;
-    --border:#E7E5E2;
-    --border-strong:#D6D3CF;
-    --text-1:#1B1B1A;
-    --text-2:#6E6C68;
-    --text-3:#A5A29C;
-    --accent:#1B1B1A;
+    --bg-subtle:#FAFAF9;
+    --surface:#FCFCFB;
+    --border:#E6E4E1;
+    --border-strong:#D3D1CD;
+    --text-1:#15151A;
+    --text-2:#68665F;
+    --text-3:#A3A19B;
+    --accent:#15151A;
     --accent-strong:#000000;
-    --accent-soft:#F0EFED;
-    --accent-soft-2:#E4E2DE;
-    --danger:#1B1B1A;
-    --good:#8C8A84;
+    --accent-soft:#F1F0ED;
+    --accent-soft-2:#E5E3DE;
+    --danger:#15151A;
+    --good:#8A8882;
     --on-accent:#ffffff;
     --radius-s:6px;
     --radius-m:10px;
     --radius-l:16px;
     --sidebar-w:76px;
-    --rightpanel-w:300px;
   }
   html[data-theme="dark"]{
-    --page-bg:#101010;
-    --bg:#1B1B1A;
-    --bg-subtle:#181817;
-    --surface:#1F1F1E;
-    --border:#302F2C;
-    --border-strong:#3D3C38;
-    --text-1:#F3F2EF;
-    --text-2:#A6A49E;
-    --text-3:#726F68;
-    --accent:#F3F2EF;
+    /* True AMOLED black — not dark gray. Panels step up only one or two
+       shades from pure black so content still has gentle depth, and text
+       sits just under pure white to avoid glare on OLED screens. */
+    --page-bg:#000000;
+    --bg:#000000;
+    --bg-subtle:#0A0A0A;
+    --surface:#0D0D0D;
+    --border:#1C1C1C;
+    --border-strong:#2A2A2A;
+    --text-1:#F2F2F0;
+    --text-2:#99988F;
+    --text-3:#55544E;
+    --accent:#F2F2F0;
     --accent-strong:#FFFFFF;
-    --accent-soft:#282826;
-    --accent-soft-2:#333230;
-    --danger:#F3F2EF;
-    --good:#7A7873;
-    --on-accent:#1B1B1A;
+    --accent-soft:#141414;
+    --accent-soft-2:#1E1E1E;
+    --danger:#F2F2F0;
+    --good:#6E6D66;
+    --on-accent:#000000;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -71,42 +75,40 @@
   button,input{font-family:inherit;color:inherit;}
   :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:4px;}
 
-  /* ---------- App frame (fake native window) ---------- */
+  /* ---------- App frame — fills the page, not a floating window card ---------- */
   .app-frame{
-    max-width:1400px;
-    margin:28px auto;
+    width:100%;
+    min-height:100vh;
+    margin:0;
     background:var(--bg);
-    border:1px solid var(--border-strong);
-    border-radius:var(--radius-l);
-    box-shadow:0 1px 2px rgba(20,20,30,0.03), 0 24px 60px -20px rgba(20,20,30,0.14);
+    border:none;
+    border-radius:0;
+    box-shadow:none;
     overflow:hidden;
-    min-height:760px;
     display:flex;
     flex-direction:column;
     transition:background .2s ease, border-color .2s ease;
   }
-  .titlebar{
-    height:44px;
-    display:flex;
-    align-items:center;
-    padding:0 14px;
-    border-bottom:1px solid var(--border);
-    flex-shrink:0;
-    position:relative;
+  /* Theme toggle now lives in the sidebar as a normal .side-btn (desktop:
+     vertical rail; mobile: the same rail flattened into a top bar — see
+     the mobile media query). It's a real <button>, unlike its sibling
+     <div> icons, so it needs its own reset to drop default button chrome. */
+  button.theme-toggle{background:none;border:1px solid transparent;font:inherit;}
+  .theme-toggle svg{transform-box:fill-box;transform-origin:center;}
+  @keyframes owlThemeBlink{0%,100%{transform:scaleY(1);}45%,55%{transform:scaleY(0.08);}}
+  .theme-toggle.blink svg{animation:owlThemeBlink .5s ease;}
+  body.theme-blinking .owl-mark .eye-pupil{transform-box:fill-box;transform-origin:center;animation:owlThemeBlink .5s ease;}
+
+  /* Smooth, whole-app cross-fade between light and dark instead of an
+     instant snap — kept to the containers that actually carry theme
+     colors, rather than a blanket rule on every element. */
+  body, .app-frame, .sidebar, .side-btn, .workspace,
+  .modal-card, .modal-close, .icon-popover, .recent-popover, .recent-item,
+  .finding-group, .fg-icon, .preview-frame, .preview-textbox, .toast,
+  .meta-table td, .meta-table tr.cat-row td, .pw-input, .dropzone, .btn,
+  .segmented, .seg-btn, .table-wrap {
+    transition: background-color .28s ease, border-color .28s ease, color .2s ease;
   }
-  .titlebar-title{
-    position:absolute;left:0;right:0;text-align:center;
-    font-size:12.5px;color:var(--text-2);font-weight:500;
-    letter-spacing:0.01em;
-    pointer-events:none;
-  }
-  .titlebar-hint{margin-left:auto;font-size:11.5px;color:var(--text-3);display:flex;align-items:center;gap:10px;z-index:1;}
-  .theme-toggle{
-    width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--bg-subtle);
-    color:var(--text-2);cursor:pointer;display:flex;align-items:center;justify-content:center;
-  }
-  .theme-toggle svg{width:13px;height:13px;}
-  .theme-toggle:hover{color:var(--text-1);}
 
   .frame-body{flex:1;display:flex;min-height:0;position:relative;}
 
@@ -150,8 +152,16 @@
     width:var(--sidebar-w);flex-shrink:0;border-right:1px solid var(--border);
     display:flex;flex-direction:column;align-items:center;padding:18px 0;background:var(--surface);position:relative;
   }
-  .sidebar .owl-mark{margin-bottom:24px;cursor:pointer;}
-  .side-nav{display:flex;flex-direction:column;gap:6px;align-items:center;flex:1;}
+  .sidebar-brand{
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    margin-bottom:24px;cursor:pointer;background:none;border:none;padding:0;
+    transition:opacity .15s ease;
+  }
+  .sidebar-brand:hover{opacity:0.72;}
+  .sidebar-wordmark{
+    font-size:9px;font-weight:700;letter-spacing:0.14em;color:var(--text-3);
+    writing-mode:vertical-rl;text-orientation:mixed;transform:rotate(180deg);
+  }
   .side-btn{
     width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-s);
     color:var(--text-3);cursor:pointer;border:1px solid transparent;transition:color .18s ease, transform .18s ease;position:relative;
@@ -165,37 +175,7 @@
     transform:translateX(-50%);animation:underlineIn .25s ease;
   }
   @keyframes underlineIn{from{width:0;opacity:0;}to{width:14px;opacity:1;}}
-  .side-divider{width:24px;height:1px;background:var(--border);margin:8px 0;}
-  .side-bottom{margin-top:auto;}
-
-  .recent-popover{
-    position:absolute;left:64px;top:64px;width:240px;background:var(--bg);border:1px solid var(--border-strong);
-    border-radius:var(--radius-m);box-shadow:0 10px 30px -8px rgba(0,0,0,0.25);padding:6px;z-index:20;display:none;
-  }
-  .recent-popover.show{display:block;}
-  .recent-item{
-    display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:7px;cursor:pointer;font-size:12.5px;
-  }
-  .recent-item:hover{background:var(--bg-subtle);}
-  .recent-item .ri-icon{width:20px;height:20px;color:var(--text-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:color .18s ease;}
-  .recent-item .ri-icon svg{width:16px;height:16px;}
-  .recent-item:hover .ri-icon{color:var(--text-1);}
-  .recent-item .ri-name{flex:1;color:var(--text-1);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .recent-item .ri-check{width:13px;height:13px;color:var(--accent);flex-shrink:0;visibility:hidden;}
-  .recent-item.active .ri-check{visibility:visible;}
-
-  .icon-popover{
-    position:absolute;left:64px;top:0;width:220px;background:var(--bg);border:1px solid var(--border-strong);
-    border-radius:var(--radius-m);box-shadow:0 10px 30px -8px rgba(0,0,0,0.25);padding:12px 14px;z-index:20;display:none;
-  }
-  .icon-popover.show{display:block;}
-  .ip-title{font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:10px;}
-  .ip-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px dashed var(--border);font-size:12.5px;}
-  .ip-row:last-child{border-bottom:none;}
-  .ip-fmt{font-family:'IBM Plex Mono',monospace;color:var(--text-1);font-weight:500;}
-  .ip-desc{color:var(--text-3);font-size:11.5px;}
-  .ip-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;font-size:12.5px;color:var(--text-2);cursor:pointer;}
-  .ip-toggle input{accent-color:var(--accent);width:15px;height:15px;cursor:pointer;}
+  .side-bottom{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:6px;}
 
   .modal-overlay{
     display:none;position:fixed;inset:0;background:rgba(20,20,18,0.42);z-index:100;
@@ -215,11 +195,8 @@
   .modal-close:hover{color:var(--text-1);background:var(--bg-subtle);}
   .modal-owl{margin:0 auto 16px;width:52px;}
   .modal-wordmark{font-size:15px;font-weight:600;letter-spacing:0.16em;color:var(--text-1);}
-  .modal-fullform{font-size:12px;color:var(--text-3);margin-top:6px;}
-  .modal-tagline{font-size:15px;font-weight:300;color:var(--text-1);margin-top:14px;}
   .modal-divider{width:32px;height:1px;background:var(--border-strong);margin:18px auto;}
   .modal-note{font-size:12.5px;color:var(--text-2);line-height:1.6;}
-  .modal-version{font-size:11px;color:var(--text-3);margin-top:18px;font-family:'IBM Plex Mono',monospace;}
 
   .workspace{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;position:relative;}
   .ws-header{padding:20px 28px 16px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-shrink:0;}
@@ -279,6 +256,14 @@
   .v.good{color:var(--good);}
   .v.removed{color:var(--text-3);font-style:italic;}
   .tag-icon{width:11px;height:11px;flex-shrink:0;}
+  .sec-password-btn{
+    display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:8px 12px;
+    font-size:12.5px;font-weight:500;color:var(--text-1);background:var(--bg-subtle);
+    border:1px solid var(--border-strong);border-radius:var(--radius-s);cursor:pointer;
+    transition:border-color .15s ease, background-color .15s ease;
+  }
+  .sec-password-btn svg{width:14px;height:14px;flex-shrink:0;}
+  .sec-password-btn:hover{border-color:var(--accent);background:var(--accent-soft);}
 
   .editor{display:none;}
   .editor.show{display:block;}
@@ -303,6 +288,9 @@
   .icon-btn:hover{color:var(--accent);background:var(--accent-soft);}
   .icon-btn.danger:hover{color:var(--danger);background:var(--accent-soft);}
   .icon-btn svg{width:13px;height:13px;}
+  .val-empty{color:var(--text-3);font-style:italic;}
+  .add-link{font-size:11.5px;color:var(--accent);cursor:pointer;background:none;border:none;font-weight:500;font-family:inherit;padding:2px 4px;}
+  .add-link:hover{text-decoration:underline;}
   .undo-link{font-size:11.5px;color:var(--accent);cursor:pointer;background:none;border:none;font-weight:500;}
 
   .raw-panel{display:none;}
@@ -311,19 +299,6 @@
   .raw-box-head{padding:9px 14px;border-bottom:1px solid var(--border);font-size:11.5px;color:var(--text-3);font-family:'IBM Plex Mono',monospace;display:flex;justify-content:space-between;}
   .raw-box pre{margin:0;padding:18px 20px;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.7;color:var(--text-2);white-space:pre-wrap;word-break:break-word;}
   .raw-box pre b{color:var(--text-1);font-weight:600;}
-
-  .right-panel{width:var(--rightpanel-w);flex-shrink:0;border-left:1px solid var(--border);padding:22px 20px 20px;overflow-y:auto;background:var(--surface);}
-  .rp-head{display:flex;align-items:center;gap:8px;margin-bottom:18px;}
-  .rp-head .owl-mark{width:22px;}
-  .rp-title{font-size:12.5px;font-weight:600;color:var(--text-1);}
-  .rp-note{display:flex;gap:9px;padding:12px 0;border-bottom:1px solid var(--border);}
-  .rp-note:last-child{border-bottom:none;}
-  .rp-dot{width:5px;height:5px;border-radius:50%;background:var(--accent);margin-top:6px;flex-shrink:0;}
-  .rp-note p{margin:0;font-size:12.5px;color:var(--text-2);line-height:1.55;}
-  .rp-note p b{color:var(--text-1);font-weight:600;}
-  .rp-cta{margin-top:20px;padding:14px;border:1px solid var(--border);border-radius:var(--radius-m);background:var(--bg);}
-  .rp-cta-title{font-size:12.5px;font-weight:600;margin-bottom:4px;}
-  .rp-cta-sub{font-size:11.5px;color:var(--text-3);margin-bottom:10px;line-height:1.5;}
 
   .toast{
     position:absolute;left:50%;bottom:24px;transform:translateX(-50%) translateY(12px);
@@ -334,40 +309,46 @@
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto;}
   .toast button{background:none;border:none;color:var(--bg);font-weight:700;font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
 
-  .preview-frame img{display:block;width:100%;height:auto;object-fit:cover;max-height:230px;}
-  .preview-frame video{display:block;width:100%;height:auto;max-height:230px;}
+  .preview-frame img{display:block;width:100%;height:auto;object-fit:cover;max-height:280px;cursor:zoom-in;transition:opacity .15s ease;}
+  .preview-frame a{display:block;line-height:0;}
+  .preview-frame a:hover img{opacity:0.88;}
+  .preview-frame video{display:block;width:100%;height:auto;max-height:320px;background:#000;}
   .preview-textbox{padding:14px 16px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;line-height:1.6;color:var(--text-2);max-height:150px;overflow:hidden;}
+  .preview-open-link{
+    display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;font-weight:500;
+    color:var(--accent);text-decoration:none;
+  }
+  .preview-open-link svg{width:13px;height:13px;flex-shrink:0;}
+  .preview-open-link:hover{text-decoration:underline;}
   .field-readonly-tag{font-size:10.5px;color:var(--text-3);font-style:italic;}
   .engine-note{font-size:11.5px;color:var(--text-3);margin-top:10px;line-height:1.5;padding-top:10px;border-top:1px dashed var(--border);}
 
   @media (max-width:900px){
-    .right-panel{display:none;}
     .fg-list{grid-template-columns:1fr;}
   }
 
   @media (max-width:640px){
     body{font-size:13.5px;}
-    .app-frame{margin:0;border-radius:0;border-left:none;border-right:none;min-height:100vh;}
-
-    /* Titlebar: the centered "MIRA" wordmark and the right-aligned status text
-       were overlapping on narrow screens. Drop the redundant centered title
-       (the owl in the sidebar already carries the brand) and let the status
-       text truncate instead of colliding with the theme toggle. */
-    .titlebar{padding:calc(0px + env(safe-area-inset-top, 0px)) 12px 0 12px;height:calc(44px + env(safe-area-inset-top, 0px));}
-    .titlebar-title{display:none;}
-    .titlebar-hint{margin-left:0;width:100%;justify-content:flex-end;}
-    #titlebarStatus{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;}
 
     .landing-tagline{font-size:22px;}
     .landing-logo svg, .modal-owl svg{max-width:100%;}
     .dropzone{padding:32px 18px;max-width:100%;}
     .formats-row{gap:6px;font-size:10.5px;row-gap:6px;}
-    .privacy-line{text-align:center;}
 
-    .sidebar{width:56px;}
+    /* Sidebar becomes a top bar on mobile — a vertical icon rail wastes
+       precious width on a phone, and pushes the workspace into a narrow
+       column. As a horizontal bar it costs one compact row instead. */
+    .view-app{flex-direction:column;}
+    .sidebar{
+      width:100%;flex-direction:row;align-items:center;
+      padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top, 0px));
+      border-right:none;border-bottom:1px solid var(--border);
+    }
+    .sidebar-brand{flex-direction:row;gap:8px;margin-bottom:0;margin-right:12px;}
+    .sidebar-wordmark{writing-mode:horizontal-tb;transform:none;font-size:11px;}
+    .side-bottom{margin-top:0;margin-left:auto;flex-direction:row;gap:4px;}
     .side-btn{width:32px;height:32px;}
     .side-btn svg{width:15px;height:15px;}
-    .icon-popover, .recent-popover{left:48px;width:190px;max-width:calc(100vw - 62px);}
 
     .ws-header{flex-direction:column;align-items:stretch;gap:12px;padding:14px 14px 10px;}
     .file-meta-title{min-width:0;}
@@ -414,27 +395,20 @@
     .toast{width:calc(100vw - 32px);left:16px;transform:translateY(12px);}
     .toast.show{transform:translateY(0);}
   }
+
 </style>
 </head>
 <body>
 
 <div class="app-frame">
-  <div class="titlebar">
-    <div class="titlebar-title">MIRA</div>
-    <div class="titlebar-hint">
-      <span id="titlebarStatus">No file loaded</span>
-      <button class="theme-toggle" id="themeToggle" title="Toggle dark mode" aria-label="Toggle dark mode"></button>
-    </div>
-  </div>
-
   <div class="frame-body">
 
     <!-- ============ LANDING ============ -->
     <div class="view-landing" id="landingView">
       <div class="landing-logo owl-mark" id="landingOwl"></div>
-      <div class="landing-wordmark">MIRA</div>
+      <div class="landing-wordmark">MYRA</div>
       <div class="landing-tagline">I see what your files hide.</div>
-      <div class="landing-sub">Metadata Intelligence &amp; Redaction Assistant</div>
+      <div class="landing-sub">My Redact Assistant</div>
 
       <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Drag a file here or browse to analyze it">
         <div class="dz-icon">
@@ -457,37 +431,12 @@
     <!-- ============ APP SHELL ============ -->
     <div class="view-app" id="appView">
       <div class="sidebar">
-        <div class="owl-mark" id="sidebarOwl" role="button" tabindex="0" title="About MIRA"></div>
-        <div class="side-nav">
-          <div class="side-btn" id="newFileBtn" title="Analyze a new file">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg>
-          </div>
-          <div class="side-btn active" id="recentBtn" title="Recent files">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8.5"/><path d="M12 8v4l3 2"/></svg>
-          </div>
-          <div class="recent-popover" id="recentPopover"></div>
-          <div class="side-divider"></div>
-          <div class="side-btn" id="formatsBtn" title="Supported formats">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/></svg>
-          </div>
-          <div class="icon-popover" id="formatsPopover" style="top:176px;">
-            <div class="ip-title">Supported formats</div>
-            <div class="ip-row"><span class="ip-fmt">JPG</span><span class="ip-desc">EXIF, IPTC, XMP</span></div>
-            <div class="ip-row"><span class="ip-fmt">PNG</span><span class="ip-desc">EXIF, text chunks</span></div>
-            <div class="ip-row"><span class="ip-fmt">PDF</span><span class="ip-desc">Document info, XMP</span></div>
-            <div class="ip-row"><span class="ip-fmt">DOCX</span><span class="ip-desc">Core &amp; app properties</span></div>
-            <div class="ip-row"><span class="ip-fmt">MP4</span><span class="ip-desc">Container metadata</span></div>
-          </div>
+        <div class="sidebar-brand" role="button" tabindex="0" title="Home" id="sidebarBrand">
+          <div class="owl-mark" id="sidebarOwl"></div>
+          <span class="sidebar-wordmark">MYRA</span>
         </div>
         <div class="side-bottom">
-          <div class="side-btn" id="settingsBtn" title="Settings">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="2.8"/><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.7-1.3-1.7-2.9-2 .6a7.6 7.6 0 0 0-2.6-1.5L14.5 3h-5l-.3 2.4a7.6 7.6 0 0 0-2.6 1.5l-2-.6-1.7 2.9L4.6 10.5a7.6 7.6 0 0 0 0 3L2.9 14.8l1.7 2.9 2-.6a7.6 7.6 0 0 0 2.6 1.5L9.5 21h5l.3-2.4a7.6 7.6 0 0 0 2.6-1.5l2 .6 1.7-2.9-1.7-1.3z"/></svg>
-          </div>
-          <div class="icon-popover" id="settingsPopover" style="bottom:8px;top:auto;">
-            <div class="ip-title">Settings</div>
-            <label class="ip-toggle"><span>Confirm before removing metadata</span><input type="checkbox" id="confirmRemoveToggle"></label>
-            <label class="ip-toggle"><span>Confirm before export</span><input type="checkbox" id="confirmExportToggle"></label>
-          </div>
+          <button class="side-btn theme-toggle" id="themeToggle" title="Toggle dark mode" aria-label="Toggle dark mode"></button>
         </div>
       </div>
 
@@ -496,7 +445,7 @@
         <div class="scan-state" id="scanState">
           <div class="owl-mark pulse" id="scanOwl" style="position:relative;"></div>
           <div class="scan-status" id="scanStatus">Reading file structure…</div>
-          <div class="scan-file mono" id="scanFileLabel">wedding_photo_final_v3.jpg — 4.2 MB</div>
+          <div class="scan-file mono" id="scanFileLabel"></div>
         </div>
 
         <div class="scan-state" id="errorState" style="display:none;">
@@ -528,14 +477,6 @@
               </div>
             </div>
             <div class="ws-actions">
-              <button class="btn btn-ghost" id="removeBtn">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
-                Remove flagged metadata
-              </button>
-              <button class="btn btn-ghost" id="pdfLockBtn" style="display:none;" title="Password-protect the exported file">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
-                <span id="pdfLockBtnLabel">Add password</span>
-              </button>
               <button class="btn btn-primary" id="exportBtn">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
                 Export cleaned file
@@ -568,43 +509,16 @@
               </div>
             </div>
 
-            <div class="right-panel">
-              <div class="rp-head">
-                <div class="owl-mark" id="rpOwl"></div>
-                <div class="rp-title">MIRA notes</div>
-              </div>
-              <div id="rpNotes"></div>
-              <div class="rp-cta">
-                <div class="rp-cta-title">Ready when you are</div>
-                <div class="rp-cta-sub" id="rpCtaSub">Export a cleaned copy with identity, origin and location details removed.</div>
-              </div>
-            </div>
           </div>
 
           <div class="toast" id="toast">
             <span id="toastMsg"></span>
-            <button id="toastUndo">Undo</button>
           </div>
         </div>
 
       </div>
     </div>
 
-  </div>
-</div>
-
-<div class="modal-overlay" id="aboutOverlay">
-  <div class="modal-card">
-    <button class="modal-close" id="aboutClose" aria-label="Close">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
-    </button>
-    <div class="modal-owl" id="modalOwl"></div>
-    <div class="modal-wordmark">MIRA</div>
-    <div class="modal-fullform">Metadata Intelligence &amp; Redaction Assistant</div>
-    <div class="modal-tagline">I see what your files hide.</div>
-    <div class="modal-divider"></div>
-    <div class="modal-note">Everything runs locally in your browser. No accounts, no uploads, no storage — files are read, edited and exported entirely on this device.</div>
-    <div class="modal-version">Concept build · v0.1</div>
   </div>
 </div>
 
@@ -634,6 +548,67 @@
 </div>
 
 <script>
+/* ================================================================
+   MYRA — how this file is organized
+   ================================================================
+   This is a single HTML file with everything inline: markup, styles
+   (in <style> above) and all of the app's logic (here). It's built this
+   way on purpose — no build step, no server, works by just opening the
+   file. Four small libraries are loaded from a CDN in <head> for the
+   parts that would be painful to hand-roll (JPEG EXIF, PDF, DOCX/zip,
+   PDF rendering); everything else — PNG, MP4, and all PDF encryption —
+   is written directly in this file with no dependency.
+
+   Reading order, top to bottom:
+     1. Icons & small utilities    — SVG snippets, byte/hex helpers, MD5/RC4
+     2. Format parsers             — one function per file type (parseJPG,
+                                      parsePNG, parseDOCX, parsePDF, parseMP4)
+     3. State & rendering          — turns a parsed file into the on-screen
+                                      Overview / Editor / Raw data tabs
+     4. Flow                       — drag-drop, the scanning animation,
+                                      switching between files
+     5. Event wiring               — buttons, popovers, modals, the editor's
+                                      inline-edit behaviour, theme toggle
+
+   THE CORE DATA MODEL — one shared "field" shape for every format
+   ------------------------------------------------------------------
+   Every parser (JPG/PNG/DOCX/PDF/MP4) boils a file down to the same
+   thing: a plain { name, size, fields: [...], ... } object. Everything
+   downstream — the Overview list, the editable table, removing a field,
+   exporting — works on that *one* shape, regardless of file format. A
+   single field in that `fields` array looks like this:
+
+     {
+       id:        'author',         // stable key, used to find this field again
+       cat:       'identity',       // which section it shows under:
+                                     //   identity | origin | timeline | content | security
+       k:         'Author',         // the label shown to the user
+       v:         'Jane Doe',       // the current value (edited in place when you type)
+       editable:  true,             // show an edit/remove button for it?
+       readonly:  true,             // (optional) shown, but can't be edited/removed —
+                                     //   used for things that would be unsafe or
+                                     //   meaningless to edit, like encryption status
+       flag:      true,             // (optional) worth a second look — shown in bold
+       good:      true,             // (optional) a reassuring "nothing found" field
+       removed:   false,            // (optional) set true after the Remove button is
+                                     //   used; the export step skips removed fields
+     }
+
+   Beyond that common shape, each field carries a few PRIVATE properties
+   (prefixed with "_") that only its own format's exportFn understands —
+   they're the instructions for writing an edit back into the real file:
+     _ifd, _tag      (JPG)   — which EXIF directory + tag this maps to
+     _xmlSrc, _tag   (DOCX)  — which XML file (core/app) + tag to rewrite
+     _infoKey        (PDF)   — which key in the PDF's Info dictionary
+     _isDate         (PDF/JPG) — convert the edited text into the exact
+                                  date format that format requires before saving
+     _gps, _thumb    (JPG)   — special removal-only fields with no single tag
+
+   None of this is enforced by a schema — it's just a convention every
+   parser follows, which is what lets the Overview/Editor/export code
+   stay generic instead of needing format-specific branches everywhere.
+   ================================================================ */
+
 /* ---------------- Icons ---------------- */
 const CAT_ICONS = {
   identity:'<circle cx="12" cy="8" r="3.2"/><path d="M5 20c1.2-3.6 4-5.5 7-5.5s5.8 1.9 7 5.5"/>',
@@ -664,9 +639,7 @@ function owlSVG(size, withRing){
 }
 document.getElementById('landingOwl').innerHTML = owlSVG(52,false);
 document.getElementById('sidebarOwl').innerHTML = owlSVG(28,false);
-document.getElementById('rpOwl').innerHTML = owlSVG(22,false);
 document.getElementById('scanOwl').innerHTML = owlSVG(64,true);
-document.getElementById('modalOwl').innerHTML = owlSVG(52,false);
 document.getElementById('errorOwl').innerHTML = owlSVG(44,false);
 
 /* ---------------- Category meta ---------------- */
@@ -680,6 +653,13 @@ const CATEGORY_META = {
 };
 
 /* ---------------- Small utilities ---------------- */
+// There's no dedicated title bar in the UI anymore — the current file/
+// status shows in the browser tab itself instead, which is the one place
+// "blending into the UI" can mean literally zero extra screen space.
+function setStatus(text){
+  document.title = (!text || text === 'No file loaded') ? 'MYRA — My Redact Assistant' : `${text} — MYRA`;
+}
+
 function humanFileSize(bytes){
   if(bytes < 1024) return bytes + ' B';
   const units = ['KB','MB','GB'];
@@ -696,6 +676,37 @@ function fileToDataURL(file){
   });
 }
 function escapeXml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toExifDateString(text){
+  const m = /^(\d{4})[-:](\d{2})[-:](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec((text||'').trim());
+  if(!m) return null;
+  const [,y,mo,d,h,mi,se] = m;
+  return `${y}:${mo}:${d} ${h}:${mi}:${se}`;
+}
+/* ---- "Add missing metadata" helpers ----
+   Every format lists ALL the fields it can store. A field the file doesn't
+   have yet is created by blankField(): empty:true, value ''. The editor
+   shows it as "Not set" with an Add button; the Overview hides it; and every
+   exportFn skips it until the user has typed a value (which clears .empty). */
+function blankField(props){ return {editable:true, ...props, v:'', empty:true, _origEmpty:true}; }
+function pushField(list, value, props){
+  list.push(value ? {editable:true, ...props, v:value} : blankField(props));
+}
+// Accepts 2024-05-01, 2024:05:01 10:30, 2024-05-01T10:30:15Z ...  Returns
+// the canonical "YYYY-MM-DD HH:MM:SS" (UTC wall-clock) or null if invalid.
+function normalizeDateInput(text){
+  const m = /^(\d{4})[-:](\d{2})[-:](\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec((text||'').trim());
+  if(!m) return null;
+  const [,y,mo,d,h='00',mi='00',se='00'] = m;
+  if(+mo<1||+mo>12||+d<1||+d>31||+h>23||+mi>59||+se>59) return null;
+  return `${y}-${mo}-${d} ${h}:${mi}:${se}`;
+}
+// EXIF/ID3-style ASCII tags only hold Latin-1: strip accents, then replace the rest.
+function latin1Safe(str){
+  return String(str).normalize('NFC').replace(/[^\x00-\xff]/g, ch=>{
+    const base = ch.normalize('NFD').replace(/[̀-ͯ]/g,'');
+    return /^[\x00-\xff]+$/.test(base) ? base : '?';
+  });
+}
 function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 let _downloadsCapability; // memoized promise
 function getDownloadsCapability(){
@@ -724,7 +735,8 @@ async function downloadBlob(blob, filename){
       // "declined" means the viewer said no on purpose — respect that,
       // don't fall back to a second, unexpected download attempt.
       if(err && err.code === 'declined') return;
-      console.warn('[MIRA] downloads capability failed, falling back:', err);
+      // downloads capability failed for some other reason — fall through
+      // to the plain <a download> approach below instead of logging it
     }
   }
   legacyDownload(blob, filename);
@@ -750,6 +762,10 @@ function concatBytes(arrays){
   const out = new Uint8Array(total);
   let off = 0; arrays.forEach(a=>{ out.set(a, off); off += a.length; });
   return out;
+}
+function makePngChunk(type, data){
+  const typeBytes = new TextEncoder().encode(type);
+  return concatBytes([uint32be(data.length), typeBytes, data, uint32be(crc32(concatBytes([typeBytes, data])))]);
 }
 function uint32be(n){ const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0,n); return b; }
 
@@ -792,13 +808,14 @@ async function parseJPG(file){
   const hasThumb = !!exifObj.thumbnail;
 
   const fields = [];
-  if(artist) fields.push({id:'author', cat:'identity', k:'Author', v:artist, editable:true, _ifd:'0th', _tag:piexif.ImageIFD.Artist});
-  if(copyright) fields.push({id:'copyright', cat:'identity', k:'Copyright', v:copyright, editable:true, _ifd:'0th', _tag:piexif.ImageIFD.Copyright});
-  if(make || model) fields.push({id:'device', cat:'origin', k:'Device', v:[make,model].filter(Boolean).join(' '), editable:false, readonly:true});
-  if(software) fields.push({id:'software', cat:'origin', k:'Software used', v:software, editable:true, _ifd:'0th', _tag:piexif.ImageIFD.Software});
+  pushField(fields, artist, {id:'author', cat:'identity', k:'Author', _ifd:'0th', _tag:piexif.ImageIFD.Artist});
+  pushField(fields, copyright, {id:'copyright', cat:'identity', k:'Copyright', _ifd:'0th', _tag:piexif.ImageIFD.Copyright});
+  pushField(fields, make, {id:'make', cat:'origin', k:'Camera make', _ifd:'0th', _tag:piexif.ImageIFD.Make});
+  pushField(fields, model, {id:'model', cat:'origin', k:'Camera model', _ifd:'0th', _tag:piexif.ImageIFD.Model});
+  pushField(fields, software, {id:'software', cat:'origin', k:'Software used', _ifd:'0th', _tag:piexif.ImageIFD.Software});
   if(hasGPS) fields.push({id:'gps', cat:'origin', k:'GPS location', v:gpsText, flag:true, editable:false, _gps:true});
-  if(dateTimeOriginal) fields.push({id:'created', cat:'timeline', k:'Created', v:dateTimeOriginal, editable:false, readonly:true});
-  if(dateTime) fields.push({id:'modified', cat:'timeline', k:'Modified', v:dateTime, editable:false, readonly:true});
+  pushField(fields, dateTimeOriginal, {id:'created', cat:'timeline', k:'Created', isDate:true, _ifd:'Exif', _tag:piexif.ExifIFD.DateTimeOriginal, _isExifDate:true});
+  pushField(fields, dateTime, {id:'modified', cat:'timeline', k:'Modified', isDate:true, _ifd:'0th', _tag:piexif.ImageIFD.DateTime, _isExifDate:true});
   fields.push({id:'thumb', cat:'content', k:'Embedded thumbnail', v: hasThumb ? 'Present' : 'None', flag:hasThumb, good:!hasThumb, editable:false, _thumb:true});
   fields.push({id:'encryption', cat:'security', k:'Encryption', v:'None', good:true, editable:false, readonly:true});
   fields.push({id:'signature', cat:'security', k:'Digital signature', v:'None', good:true, editable:false, readonly:true});
@@ -809,9 +826,12 @@ async function parseJPG(file){
 
   const img = new Image();
   const dims = await new Promise(res=>{
-    img.onload = ()=>res(`${img.naturalWidth} × ${img.naturalHeight}`);
-    img.onerror = ()=>res('');
+    let done = false;
+    const finish = (v)=>{ if(done) return; done = true; res(v); };
+    img.onload = ()=>finish(`${img.naturalWidth} × ${img.naturalHeight}`);
+    img.onerror = ()=>finish('');
     img.src = dataURL;
+    setTimeout(()=>finish(''), 8000);
   });
 
   function rawDump(){
@@ -844,19 +864,22 @@ async function parseJPG(file){
   return {
     sourceKey: 'real-' + Date.now(),
     name: file.name, typeLabel: 'JPEG Image', size: humanFileSize(file.size), dims,
-    icon: JPG_ICON, previewType:'photo', previewURL: dataURL,
-    scanMsgs:['Reading file structure…','Parsing EXIF & GPS tags…','Checking for embedded content…','Done — here is what MIRA found.'],
+    icon: JPG_ICON, previewType:'photo', previewURL: URL.createObjectURL(file), previewOpenURL: URL.createObjectURL(file), previewOpenLabel: 'Open full size',
+    scanMsgs:['Reading file structure…','Parsing EXIF & GPS tags…','Checking for embedded content…','Done — here is what MYRA found.'],
     fields, rawCmd: `piexif.load("${file.name}")`, raw: rawDump(), notes,
     ctaSub: hasGPS || hasThumb ? 'Export a cleaned copy with GPS and the embedded thumbnail removed.' : 'Export a cleaned copy of this file.',
-    engineNote: 'Live EXIF read via piexifjs — GPS &amp; thumbnail removal are fully supported on export; edited text fields (Author, Copyright, Software) are written back too.',
+    engineNote: 'GPS location and the embedded thumbnail can be removed. Author, Copyright, camera, software and dates can be edited, and any empty field can be added with Add. Your original file is never modified.',
     exportFn: async ()=>{
       const outExif = {"0th":{...IFD0}, "Exif":{...IFDExif}, "GPS":{...IFDGPS}, "1st": exifObj["1st"]||{}, "thumbnail": hasThumb ? exifObj.thumbnail : null};
       fields.forEach(f=>{
         if(f._gps && f.removed) outExif["GPS"] = {};
         if(f._thumb && f.removed) outExif["thumbnail"] = null;
-        if(f._ifd && f._tag != null){
-          if(f.removed) delete outExif[f._ifd][f._tag];
-          else outExif[f._ifd][f._tag] = f.v;
+        if(f._ifd && f._tag != null && !f.empty){
+          if(f.removed){ delete outExif[f._ifd][f._tag]; }
+          else if(f._isExifDate){
+            const exifDate = toExifDateString(f.v);
+            if(exifDate) outExif[f._ifd][f._tag] = exifDate;
+          } else { outExif[f._ifd][f._tag] = latin1Safe(f.v); }
         }
       });
       const exifBytes = piexif.dump(outExif);
@@ -899,15 +922,23 @@ async function parsePNG(file){
 
   const fields = [];
   let ti = 0;
+  // Standard PNG text keywords -> which editor group they belong in.
+  const PNG_KEYS = [['Title','identity'],['Author','identity'],['Copyright','identity'],['Description','content'],['Comment','content'],['Software','origin'],['Source','origin'],['Creation Time','timeline']];
+  const pngCat = key => { const hit = PNG_KEYS.find(p=>p[0].toLowerCase()===String(key).toLowerCase()); return hit ? hit[1] : 'content'; };
   chunks.forEach(c=>{
     if(c.type === 'tEXt'){
       const {key,val} = decodeTEXt(c.data);
-      fields.push({id:'png-text-'+(ti++), cat:'content', k:key, v:val, flag:true, editable:true, _chunkRef:c});
+      fields.push({id:'png-text-'+(ti++), cat:pngCat(key), k:key, v:val, flag:true, editable:true, _chunkRef:c});
     } else if(c.type === 'iTXt' || c.type === 'zTXt'){
       const nullIdx = c.data.indexOf(0);
       const key = new TextDecoder().decode(c.data.slice(0, nullIdx));
       fields.push({id:'png-text-'+(ti++), cat:'content', k:key || (c.type+' chunk'), v:'(embedded text data)', flag:true, editable:false, readonly:true, _chunkRef:c});
     }
+  });
+  // Offer every standard keyword the file doesn't already carry.
+  const haveKeys = new Set(fields.filter(f=>f._chunkRef).map(f=>String(f.k).toLowerCase()));
+  PNG_KEYS.forEach(([key,cat])=>{
+    if(!haveKeys.has(key.toLowerCase())) fields.push(blankField({id:'png-new-'+key.replace(/\s/g,'').toLowerCase(), cat, k:key, _pngNewKey:key}));
   });
   const eXIf = chunks.find(c=>c.type==='eXIf');
   fields.push({id:'exif-chunk', cat:'content', k:'Embedded EXIF chunk', v: eXIf ? 'Present' : 'None', flag:!!eXIf, good:!eXIf, editable:false, readonly:true});
@@ -923,7 +954,7 @@ async function parsePNG(file){
   }
 
   const notes = [];
-  const textCount = fields.filter(f=>f.cat==='content' && f.flag && f.id!=='exif-chunk').length;
+  const textCount = fields.filter(f=>f._chunkRef && f.flag && !f.empty).length;
   if(textCount) notes.push(`This PNG has <b>${textCount} embedded text field${textCount>1?'s':''}</b> (tEXt/iTXt chunks) attached.`);
   if(eXIf) notes.push('An <b>EXIF chunk</b> is embedded in this PNG — modern phone photos sometimes save these.');
   if(!notes.length) notes.push('No embedded text or EXIF data was found in this file.');
@@ -932,14 +963,28 @@ async function parsePNG(file){
   return {
     sourceKey: 'real-' + Date.now(),
     name: file.name, typeLabel: 'PNG Image', size: humanFileSize(file.size), dims,
-    icon: JPG_ICON, previewType:'photo', previewURL,
-    scanMsgs:['Reading file structure…','Walking PNG chunks…','Checking for embedded text & EXIF…','Done — here is what MIRA found.'],
+    icon: JPG_ICON, previewType:'photo', previewURL, previewOpenURL: previewURL, previewOpenLabel: 'Open full size',
+    scanMsgs:['Reading file structure…','Walking PNG chunks…','Checking for embedded text & EXIF…','Done — here is what MYRA found.'],
     fields, rawCmd: `png-chunks ${file.name}`, raw: rawDump(), notes,
     ctaSub: textCount || eXIf ? 'Export a cleaned copy with embedded text and EXIF chunks removed.' : 'Export a cleaned copy of this file.',
-    engineNote: 'Live PNG chunk read — text-chunk removal and edits are fully supported on export (chunks are re-encoded with a fresh CRC).',
+    engineNote: 'Embedded text fields can be edited, removed or added (Title, Author, Description, Copyright and more). Your original file is never modified.',
     exportFn: async ()=>{
       const keep = [];
+      // Brand-new text fields (keyword not in the file yet) become new chunks placed just before IEND.
+      const newChunks = [];
+      fields.forEach(f=>{
+        if(!f._pngNewKey || f.empty || f.removed) return;
+        const asciiOnly = /^[\x00-\xff]*$/.test(f.v);
+        if(asciiOnly){
+          const latin = new Uint8Array([...f.v].map(ch=>ch.charCodeAt(0)));
+          newChunks.push(makePngChunk('tEXt', concatBytes([new TextEncoder().encode(f._pngNewKey), new Uint8Array([0]), latin])));
+        } else {
+          // iTXt: keyword\0 compressionFlag compressionMethod language\0 translatedKeyword\0 UTF-8 text
+          newChunks.push(makePngChunk('iTXt', concatBytes([new TextEncoder().encode(f._pngNewKey), new Uint8Array([0,0,0,0,0]), new TextEncoder().encode(f.v)])));
+        }
+      });
       chunks.forEach(c=>{
+        if(c.type === 'IEND') keep.push(...newChunks);
         const field = fields.find(f=>f._chunkRef === c);
         if(field && field.removed) return;
         let data = c.data;
@@ -948,10 +993,7 @@ async function parsePNG(file){
           const valBytes = new TextEncoder().encode(field.v);
           data = concatBytes([keyBytes, new Uint8Array([0]), valBytes]);
         }
-        const typeBytes = new TextEncoder().encode(c.type);
-        const body = concatBytes([typeBytes, data]);
-        const crc = crc32(body);
-        keep.push(concatBytes([uint32be(data.length), typeBytes, data, uint32be(crc)]));
+        keep.push(makePngChunk(c.type, data));
       });
       const signature = new Uint8Array([137,80,78,71,13,10,26,10]);
       const outBytes = concatBytes([signature, ...keep]);
@@ -976,10 +1018,43 @@ async function parseDOCX(file){
     const m = xml.match(re);
     return m ? m[1].trim() : null;
   }
-  function setXmlTagValue(xml, tag, newVal){
+  const NS = {
+    cp:'http://schemas.openxmlformats.org/package/2006/metadata/core-properties',
+    dc:'http://purl.org/dc/elements/1.1/',
+    dcterms:'http://purl.org/dc/terms/',
+    xsi:'http://www.w3.org/2001/XMLSchema-instance'
+  };
+  const NEW_CORE = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"></cp:coreProperties>';
+  const NEW_APP = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"></Properties>';
+  // Make sure a namespace prefix used by a new element is declared on the root.
+  function ensureNs(xml, prefix){
+    if(!NS[prefix] || xml.includes('xmlns:'+prefix+'=')) return xml;
+    return xml.replace(/<(cp:coreProperties|Properties)(\s|>)/, (m,root,tail)=> '<'+root+' xmlns:'+prefix+'="'+NS[prefix]+'"'+(tail==='>'?'>':' '));
+  }
+  // Rewrites a tag's text if it exists, otherwise INSERTS the element (this is
+  // what makes "Add" work for fields the file never had).
+  function setXmlTagValue(xml, tag, newVal, isDate){
+    // normalise <tag/> into <tag></tag> so one code path handles both
+    xml = xml.replace(new RegExp('<'+tag+'(\\s[^>]*?)?\\s*\\/>'), (m,a)=> '<'+tag+(a||'')+'></'+tag+'>');
     const re = new RegExp('(<'+tag+'[^>]*>)([\\s\\S]*?)(<\\/'+tag+'>)');
     if(re.test(xml)) return xml.replace(re, (m,p1,p2,p3)=> p1 + escapeXml(newVal) + p3);
-    return xml;
+    const el = '<'+tag+(isDate?' xsi:type="dcterms:W3CDTF"':'')+'>'+escapeXml(newVal)+'</'+tag+'>';
+    const prefix = tag.includes(':') ? tag.split(':')[0] : null;
+    if(prefix) xml = ensureNs(xml, prefix);
+    if(isDate) xml = ensureNs(xml, 'xsi');
+    return xml.replace(/<\/(cp:coreProperties|Properties)>\s*$/, el+'</$1>');
+  }
+  // dcterms dates must be W3C format (2024-05-01T10:30:00Z)
+  function toW3cDate(text){
+    if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test((text||'').trim())) return text.trim();
+    const n = normalizeDateInput(text);
+    return n ? n.replace(' ','T')+'Z' : null;
+  }
+  async function registerDocPart(zip, partPath, contentType, relType){
+    const ct = zip.file('[Content_Types].xml');
+    if(ct){ let t = await ct.async('string'); if(!t.includes('/'+partPath)){ zip.file('[Content_Types].xml', t.replace('</Types>', '<Override PartName="/'+partPath+'" ContentType="'+contentType+'"/></Types>')); } }
+    const rf = zip.file('_rels/.rels');
+    if(rf){ let t = await rf.async('string'); if(!t.includes(partPath)){ zip.file('_rels/.rels', t.replace('</Relationships>', '<Relationship Id="rIdMyra'+partPath.length+'" Type="'+relType+'" Target="'+partPath+'"/></Relationships>')); } }
   }
 
   const creator = extractTag(coreXML,'dc:creator');
@@ -1002,14 +1077,14 @@ async function parseDOCX(file){
   }
 
   const fields = [];
-  if(title) fields.push({id:'title', cat:'identity', k:'Title', v:title, editable:true, _xmlSrc:'core', _tag:'dc:title'});
-  if(creator) fields.push({id:'author', cat:'identity', k:'Author', v:creator, editable:true, _xmlSrc:'core', _tag:'dc:creator'});
-  if(lastModifiedBy) fields.push({id:'last-modified-by', cat:'identity', k:'Last modified by', v:lastModifiedBy, flag:true, editable:true, _xmlSrc:'core', _tag:'cp:lastModifiedBy'});
-  if(company) fields.push({id:'company', cat:'identity', k:'Company', v:company, editable:true, _xmlSrc:'app', _tag:'Company'});
-  if(application) fields.push({id:'application', cat:'origin', k:'Application', v:application, editable:false, readonly:true});
-  if(template) fields.push({id:'template', cat:'origin', k:'Template', v:template, editable:true, _xmlSrc:'app', _tag:'Template'});
-  if(created) fields.push({id:'created', cat:'timeline', k:'Created', v:created, editable:false, readonly:true});
-  if(modified) fields.push({id:'modified', cat:'timeline', k:'Modified', v:modified, editable:false, readonly:true});
+  pushField(fields, title, {id:'title', cat:'identity', k:'Title', _xmlSrc:'core', _tag:'dc:title'});
+  pushField(fields, creator, {id:'author', cat:'identity', k:'Author', _xmlSrc:'core', _tag:'dc:creator'});
+  pushField(fields, lastModifiedBy, {id:'last-modified-by', cat:'identity', k:'Last modified by', flag:true, _xmlSrc:'core', _tag:'cp:lastModifiedBy'});
+  pushField(fields, company, {id:'company', cat:'identity', k:'Company', _xmlSrc:'app', _tag:'Company'});
+  pushField(fields, application, {id:'application', cat:'origin', k:'Application', _xmlSrc:'app', _tag:'Application'});
+  pushField(fields, template, {id:'template', cat:'origin', k:'Template', _xmlSrc:'app', _tag:'Template'});
+  pushField(fields, created, {id:'created', cat:'timeline', k:'Created', isDate:true, _xmlSrc:'core', _tag:'dcterms:created'});
+  pushField(fields, modified, {id:'modified', cat:'timeline', k:'Modified', isDate:true, _xmlSrc:'core', _tag:'dcterms:modified'});
   if(totalTimeRaw) fields.push({id:'edit-time', cat:'timeline', k:'Total edit time', v: totalTimeRaw+' min', editable:false, readonly:true});
   fields.push({id:'tracked', cat:'content', k:'Tracked changes', v: trackedCount ? trackedCount+' edits found' : 'None', flag: trackedCount>0, good: trackedCount===0, editable:false, readonly:true});
   fields.push({id:'comments', cat:'content', k:'Comments', v: commentsCount ? commentsCount+' comments' : 'None', flag: commentsCount>0, good: commentsCount===0, editable:false, readonly:true});
@@ -1045,20 +1120,28 @@ async function parseDOCX(file){
     sourceKey: 'real-' + Date.now(),
     name: file.name, typeLabel: 'Word Document', size: humanFileSize(file.size), dims:'',
     icon: DOCX_ICON, previewType:'document', previewText,
-    scanMsgs:['Reading document structure…','Scanning revision history…','Checking comments & properties…','Done — here is what MIRA found.'],
+    scanMsgs:['Reading document structure…','Scanning revision history…','Checking comments & properties…','Done — here is what MYRA found.'],
     fields, rawCmd: `unzip -p ${file.name} docProps/core.xml`, raw: rawDump(), notes,
     ctaSub: 'Export a cleaned copy with identity and origin fields removed.',
-    engineNote: 'Live read via JSZip — Identity/Origin fields are edited and stripped for real on export. Tracked changes and comments are detected but kept read-only in this build to avoid corrupting the document structure.',
+    engineNote: 'Identity, origin and date fields can all be edited, removed or added when missing. Tracked changes and comments are shown but can\'t be removed in this version. Your original file is never modified.',
     exportFn: async ()=>{
-      let newCore = coreXML, newApp = appXML;
+      let newCore = coreXML || NEW_CORE, newApp = appXML || NEW_APP;
+      let wroteCore = !!coreXML, wroteApp = !!appXML;
       fields.forEach(f=>{
-        if(f.readonly) return;
-        const val = f.removed ? '' : f.v;
-        if(f._xmlSrc === 'core') newCore = setXmlTagValue(newCore, f._tag, val);
-        if(f._xmlSrc === 'app') newApp = setXmlTagValue(newApp, f._tag, val);
+        if(f.readonly || f.empty) return;
+        let val = f.removed ? '' : f.v;
+        if(f.isDate && !f.removed){ const w = toW3cDate(val); if(w) val = w; else return; }
+        if(f._xmlSrc === 'core'){ newCore = setXmlTagValue(newCore, f._tag, val, f.isDate); wroteCore = true; }
+        if(f._xmlSrc === 'app'){ newApp = setXmlTagValue(newApp, f._tag, val, false); wroteApp = true; }
       });
-      if(newCore) zip.file('docProps/core.xml', newCore);
-      if(newApp) zip.file('docProps/app.xml', newApp);
+      if(wroteCore){
+        zip.file('docProps/core.xml', newCore);
+        if(!coreXML) await registerDocPart(zip, 'docProps/core.xml', 'application/vnd.openxmlformats-package.core-properties+xml', 'http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties');
+      }
+      if(wroteApp){
+        zip.file('docProps/app.xml', newApp);
+        if(!appXML) await registerDocPart(zip, 'docProps/app.xml', 'application/vnd.openxmlformats-officedocument.extended-properties+xml', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties');
+      }
       const blob = await zip.generateAsync({type:'blob'});
       return {blob, filename: file.name};
     }
@@ -1079,6 +1162,33 @@ function parsePdfDate(str){
   const [,y,mo,d,h='00',mi='00',s='00'] = m;
   return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
 }
+function toPdfDateString(text){
+  const m = /^(\d{4})[-:](\d{2})[-:](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec((text||'').trim());
+  if(!m) return null;
+  const [,y,mo,d,h,mi,se] = m;
+  return `D:${y}${mo}${d}${h}${mi}${se}Z`;
+}
+/* Write directly to the Info dictionary instead of going through pdf-lib's
+   setAuthor()/setTitle()/etc. Those high-level setters can silently miss
+   the file's real, active Info object on documents with an unusual
+   structure — the same class of bug that made MYRA's /Encrypt lookup
+   pick the wrong object earlier. Writing the dict ourselves means we
+   always know exactly what happened. */
+function setPdfInfoValue(pdfDoc, key, value){
+  const { PDFName, PDFDict, PDFString } = PDFLib;
+  const context = pdfDoc.context;
+  let infoRef = context.trailerInfo.Info;
+  let infoDict = null;
+  if(infoRef){
+    try { infoDict = context.lookup(infoRef, PDFDict); } catch(e){ infoDict = null; }
+  }
+  if(!infoDict){
+    infoDict = context.obj({});
+    infoRef = context.register(infoDict);
+    context.trailerInfo.Info = infoRef;
+  }
+  infoDict.set(PDFName.of(key), PDFString.of(value || ''));
+}
 async function renderPdfPageToImage(buf, password){
   const params = { data: buf.slice(0) };
   if(password) params.password = password;
@@ -1094,7 +1204,7 @@ async function renderPdfPageToImage(buf, password){
 }
 
 /* ================================================================
-   PDF decryption engine (EXPERIMENTAL)
+   PDF decryption engine
    Implements the PDF standard security handler (RC4 / AES-128, PDF spec
    Algorithm 1 & 2) so a password-protected PDF can be turned into a
    genuinely plain PDF and handed to pdf-lib for full read/write access —
@@ -1195,8 +1305,8 @@ function concatU8(arrays){
   return out;
 }
 
-function computePdfEncryptionKey({password, O, P, idBytes, R, keyLenBytes, encryptMetadata}){
-  const pwBytes = padPdfPassword(new TextEncoder().encode(password || ''));
+function computePdfEncryptionKey({password, prePadded, O, P, idBytes, R, keyLenBytes, encryptMetadata}){
+  const pwBytes = prePadded || padPdfPassword(new TextEncoder().encode(password || ''));
   const pBytes = new Uint8Array(4);
   new DataView(pBytes.buffer).setInt32(0, P|0, true);
   let input = concatU8([pwBytes, O, pBytes, idBytes]);
@@ -1245,12 +1355,35 @@ function computeUValue(fileKey, idBytes, R){
 
 /* Try a candidate user password; returns {key, valid} where valid means the
    derived key's computed /U matches the file's real /U (first 16 bytes,
-   per spec — R3+ only requires that much to match). */
-function deriveAndValidateKey(candidatePassword, params){
-  const key = computePdfEncryptionKey({ password: candidatePassword, ...params });
+   per spec — R3+ only requires that much to match). Pass prePadded (32
+   raw bytes) instead of candidatePassword to validate an already-padded
+   password recovered via Algorithm 7 below. */
+function deriveAndValidateKey(candidatePassword, params, prePadded){
+  const key = computePdfEncryptionKey({ password: candidatePassword, prePadded, ...params });
   const computedU = computeUValue(key, params.idBytes, params.R);
   const valid = bytesToHex(computedU.slice(0,16)) === bytesToHex(params.UBytes.slice(0,16));
   return { key, valid };
+}
+
+/* PDF spec Algorithm 7: recover the padded USER password using only the
+   OWNER password — this is the reverse of Algorithm 3 (which computed /O
+   by encrypting the padded user password through 20 sequential RC4
+   passes keyed off the owner password). Many real-world files hand people
+   the owner password as "the PDF password" while the true user password
+   is something else entirely (or blank); this lets that still work. */
+function recoverPaddedUserPassword(ownerPassword, O, R, keyLenBytes){
+  let digest = md5(padPdfPassword(new TextEncoder().encode(ownerPassword || '')));
+  if(R >= 3){ for(let i=0;i<50;i++) digest = md5(digest.slice(0,keyLenBytes)); }
+  const key0 = digest.slice(0,keyLenBytes);
+  let recovered = O;
+  if(R >= 3){
+    for(let i=19;i>=1;i--){
+      const roundKey = new Uint8Array(key0.length);
+      for(let j=0;j<key0.length;j++) roundKey[j] = key0[j] ^ i;
+      recovered = rc4(roundKey, recovered);
+    }
+  }
+  return rc4(key0, recovered);
 }
 
 /* Attempt to turn an encrypted PDF into a genuinely plain one by decrypting
@@ -1259,96 +1392,120 @@ function deriveAndValidateKey(candidatePassword, params){
    doesn't match what this implementation covers (e.g. AES-256/R6, which
    isn't implemented). */
 async function decryptPdfToPlainBytes(buf, password){
-  const { PDFDocument, PDFName, PDFDict, PDFArray, PDFString, PDFHexString, PDFRawStream, PDFNumber } = PDFLib;
+  const { PDFDocument, PDFName, PDFDict, PDFArray, PDFString, PDFHexString, PDFRawStream, PDFStream, PDFNumber, PDFRef } = PDFLib;
   const pdfDoc = await PDFDocument.load(buf, {ignoreEncryption:true, updateMetadata:false, throwOnInvalidObject:false});
   const context = pdfDoc.context;
 
-  const encryptRef = context.trailerInfo.Encrypt;
-  if(!encryptRef) throw new Error('No /Encrypt dictionary found.');
-  const encryptDict = context.lookup(encryptRef, PDFDict);
-
-  const V = encryptDict.has(PDFName.of('V')) ? encryptDict.get(PDFName.of('V')).asNumber() : 0;
-  const R = encryptDict.has(PDFName.of('R')) ? encryptDict.get(PDFName.of('R')).asNumber() : 2;
-  if(V >= 5 || R >= 5) throw new Error('AES-256 (R5/R6) PDFs are not supported by this decrypt path yet.');
-
-  const OObj = encryptDict.get(PDFName.of('O'));
-  const O = OObj ? OObj.asBytes() : new Uint8Array(32);
-  const P = encryptDict.has(PDFName.of('P')) ? encryptDict.get(PDFName.of('P')).asNumber() : 0;
-
-  let encryptMetadata = true;
-  if(encryptDict.has(PDFName.of('EncryptMetadata'))){
-    const emObj = encryptDict.get(PDFName.of('EncryptMetadata'));
-    encryptMetadata = !!(emObj && emObj.asBoolean && emObj.asBoolean());
+  // A file that's been incrementally re-saved can have more than one
+  // /Encrypt-shaped object physically present — old, dead ones left over
+  // from prior revisions, plus the real, current one — and figuring out
+  // which is "current" by structural position (trailer chains, /Prev
+  // pointers) has repeatedly picked the wrong one on real files. Instead
+  // of guessing structurally, collect every /Encrypt-shaped object in the
+  // file and test each one directly: whichever candidate's own /U value
+  // actually validates against a real password attempt is, by definition,
+  // the right one — correctness by verification, not by position.
+  const rawText = new TextDecoder('latin1').decode(buf);
+  const seenObjNums = new Set();
+  const candidateRefs = [];
+  for(const m of rawText.matchAll(/\/Encrypt\s+(\d+)\s+(\d+)\s+R/g)){
+    const objNum = parseInt(m[1],10);
+    if(seenObjNums.has(objNum)) continue;
+    seenObjNums.add(objNum);
+    candidateRefs.push(PDFRef.of(objNum, parseInt(m[2],10)));
   }
-
-  // Detect AES BEFORE deciding key length — AESV2 is always 128-bit (16
-  // bytes) even when the top-level /Length entry is omitted, and defaulting
-  // to the RC4 40-bit length in that case produces a completely wrong key
-  // (garbage plaintext), not a slightly-wrong one.
-  let isAES = false;
-  if(V === 4 || V === 5){
-    const cfObj = encryptDict.get(PDFName.of('CF'));
-    const cfDict = cfObj ? context.lookup(cfObj, PDFDict) : undefined;
-    if(cfDict){
-      const stdCFObj = cfDict.get(PDFName.of('StdCF'));
-      const stdCF = stdCFObj ? context.lookup(stdCFObj, PDFDict) : undefined;
-      if(stdCF && stdCF.has(PDFName.of('CFM'))){
-        const cfm = stdCF.get(PDFName.of('CFM')).toString();
-        isAES = /AESV2|AESV3/.test(cfm);
-      }
-    }
+  if(context.trailerInfo.Encrypt && !seenObjNums.has(context.trailerInfo.Encrypt.objectNumber)){
+    candidateRefs.push(context.trailerInfo.Encrypt);
   }
-
-  let keyLenBytes;
-  if(encryptDict.has(PDFName.of('Length'))){
-    keyLenBytes = Math.floor(encryptDict.get(PDFName.of('Length')).asNumber() / 8);
-  } else if(isAES){
-    keyLenBytes = 16; // AESV2 default when /Length is omitted
-  } else {
-    keyLenBytes = 5; // RC4 40-bit default when /Length is omitted
-  }
-  keyLenBytes = Math.max(5, Math.min(keyLenBytes, 16));
+  if(!candidateRefs.length) throw new Error('No /Encrypt dictionary found.');
 
   const idArr = context.trailerInfo.ID ? context.lookup(context.trailerInfo.ID, PDFArray) : null;
   const idBytes = idArr ? idArr.get(0).asBytes() : new Uint8Array(0);
-  const UObj = encryptDict.get(PDFName.of('U'));
-  const UBytes = UObj ? UObj.asBytes() : new Uint8Array(32);
 
-  console.log('[MIRA pdf-decrypt] V=%d R=%d isAES=%s keyLenBytes=%d encryptMetadata=%s O.length=%d idBytes.length=%d',
-    V, R, isAES, keyLenBytes, encryptMetadata, O.length, idBytes.length);
+  let resolved = null; // { encryptRef, encryptDict, V, R, isAES, keyLenBytes, encryptMetadata, fileKey, strategy }
+  const attemptsLog = [];
 
-  // Many real-world PDFs (this is extremely common for bank/institutional
-  // statements) set an *owner* password to restrict editing/printing while
-  // leaving the *user* password — the one needed just to read the file —
-  // blank. A spec-compliant reader always tries blank first, automatically,
-  // before ever prompting a person. We validate each candidate against the
-  // file's real /U value (Algorithm 6) before trusting it, rather than
-  // assuming whatever we derive is correct.
-  const keyParams = { O, P, idBytes, R, keyLenBytes, encryptMetadata, UBytes };
-  let fileKey;
-  const blankAttempt = deriveAndValidateKey('', keyParams);
-  if(blankAttempt.valid){
-    console.log('[MIRA pdf-decrypt] Blank user password validated — using it (the password you typed was likely the owner password, which restricts permissions but isn\'t needed to read the file).');
-    fileKey = blankAttempt.key;
-  } else {
+  for(const candidateRef of candidateRefs){
+    let encryptDict;
+    try { encryptDict = context.lookup(candidateRef, PDFDict); } catch(e){ continue; }
+
+    const V = encryptDict.has(PDFName.of('V')) ? encryptDict.get(PDFName.of('V')).asNumber() : 0;
+    const R = encryptDict.has(PDFName.of('R')) ? encryptDict.get(PDFName.of('R')).asNumber() : 2;
+    if(V >= 5 || R >= 5){ attemptsLog.push(`obj ${candidateRef.objectNumber}: V=${V} R=${R} — AES-256 not supported, skipped`); continue; }
+
+    const OObj = encryptDict.get(PDFName.of('O'));
+    const O = OObj ? OObj.asBytes() : new Uint8Array(32);
+    const P = encryptDict.has(PDFName.of('P')) ? encryptDict.get(PDFName.of('P')).asNumber() : 0;
+    const UObj = encryptDict.get(PDFName.of('U'));
+    const UBytes = UObj ? UObj.asBytes() : new Uint8Array(32);
+    if(O.length < 32 || UBytes.length < 16){ attemptsLog.push(`obj ${candidateRef.objectNumber}: malformed O/U, skipped`); continue; }
+
+    let encryptMetadata = true;
+    if(encryptDict.has(PDFName.of('EncryptMetadata'))){
+      const emObj = encryptDict.get(PDFName.of('EncryptMetadata'));
+      encryptMetadata = !!(emObj && emObj.asBoolean && emObj.asBoolean());
+    }
+
+    let isAES = false;
+    if(V === 4 || V === 5){
+      const cfObj = encryptDict.get(PDFName.of('CF'));
+      const cfDict = cfObj ? context.lookup(cfObj, PDFDict) : undefined;
+      if(cfDict){
+        const stdCFObj = cfDict.get(PDFName.of('StdCF'));
+        const stdCF = stdCFObj ? context.lookup(stdCFObj, PDFDict) : undefined;
+        if(stdCF && stdCF.has(PDFName.of('CFM'))){
+          isAES = /AESV2|AESV3/.test(stdCF.get(PDFName.of('CFM')).toString());
+        }
+      }
+    }
+
+    let keyLenBytes;
+    if(encryptDict.has(PDFName.of('Length'))){
+      keyLenBytes = Math.floor(encryptDict.get(PDFName.of('Length')).asNumber() / 8);
+    } else if(isAES){
+      keyLenBytes = 16;
+    } else {
+      keyLenBytes = 5;
+    }
+    keyLenBytes = Math.max(5, Math.min(keyLenBytes, 16));
+
+    const keyParams = { O, P, idBytes, R, keyLenBytes, encryptMetadata, UBytes };
+
+    const blankAttempt = deriveAndValidateKey('', keyParams);
+    if(blankAttempt.valid){
+      resolved = { encryptRef: candidateRef, encryptDict, V, R, isAES, keyLenBytes, fileKey: blankAttempt.key,
+        strategy: 'blank user password' };
+      break;
+    }
     const typedAttempt = deriveAndValidateKey(password, keyParams);
     if(typedAttempt.valid){
-      console.log('[MIRA pdf-decrypt] Typed password validated as the user password.');
-      fileKey = typedAttempt.key;
-    } else {
-      throw new Error('Neither a blank password nor the one you typed validates as this file\'s user password (it may be an owner-only password, which this build can\'t yet recover).');
+      resolved = { encryptRef: candidateRef, encryptDict, V, R, isAES, keyLenBytes, fileKey: typedAttempt.key,
+        strategy: 'typed user password' };
+      break;
     }
+    const recoveredPadded = recoverPaddedUserPassword(password, O, R, keyLenBytes);
+    const ownerAttempt = deriveAndValidateKey(null, keyParams, recoveredPadded);
+    if(ownerAttempt.valid){
+      resolved = { encryptRef: candidateRef, encryptDict, V, R, isAES, keyLenBytes, fileKey: ownerAttempt.key,
+        strategy: 'owner password (recovered real user password)' };
+      break;
+    }
+    attemptsLog.push(`obj ${candidateRef.objectNumber}: V=${V} R=${R} — blank/typed/owner all failed to validate`);
   }
-  console.log('[MIRA pdf-decrypt] fileKey (hex) =', bytesToHex(fileKey));
+
+  if(!resolved){
+    const err = new Error('Tried every /Encrypt object found in this file ('+candidateRefs.length+' candidate'+(candidateRefs.length!==1?'s':'')+') — none validated with a blank password, the typed password as user, or the typed password as owner.\n'+attemptsLog.join('\n'));
+    err.pdfDiagnostics = { candidates: candidateRefs.map(r=>r.objectNumber), attemptsLog };
+    throw err;
+  }
+
+  const { encryptRef, encryptDict, V, R, isAES, keyLenBytes, fileKey } = resolved;
 
   function decryptForObject(bytes, objNum, genNum, isStream){
     const objKey = pdfObjectKey(fileKey, objNum, genNum, isAES);
     if(isAES) return aesCbcDecrypt(objKey, bytes);
     return Promise.resolve(rc4(objKey, bytes));
   }
-
-  const tasks = [];
-  function scheduleReplace(container, key, newVal){ tasks.push(()=>container.set(key, newVal)); }
 
   function dictKeys(dict){
     if(typeof dict.keys === 'function') return dict.keys();
@@ -1361,7 +1518,6 @@ async function decryptPdfToPlainBytes(buf, password){
     if(typeof arr.length === 'number') return arr.length;
     return 0;
   }
-
   async function walk(obj, objNum, genNum){
     if(obj == null) return obj;
     if(obj instanceof PDFDict){
@@ -1396,14 +1552,6 @@ async function decryptPdfToPlainBytes(buf, password){
       const raw = obj.asBytes();
       if(!raw.length) return obj;
       const decrypted = await decryptForObject(raw, objNum, genNum, false);
-      if(!decryptPdfToPlainBytes._logged){
-        decryptPdfToPlainBytes._logged = true;
-        let asText = ''; try{ asText = new TextDecoder('latin1').decode(decrypted).replace(/[^\x20-\x7E]/g,'.'); }catch(e){}
-        console.log('[MIRA pdf-decrypt] first string decrypt — obj', objNum, genNum,
-          'raw(hex)=', bytesToHex(raw).slice(0,40),
-          'decrypted(hex)=', bytesToHex(decrypted).slice(0,40),
-          'as text=', asText.slice(0,40));
-      }
       return PDFHexString.of(bytesToHex(decrypted));
     }
     return obj;
@@ -1417,7 +1565,6 @@ async function decryptPdfToPlainBytes(buf, password){
       context.assign(ref, newObj);
     }
   }
-  tasks.forEach(fn=>fn());
 
   context.trailerInfo.Encrypt = undefined;
 
@@ -1426,7 +1573,7 @@ async function decryptPdfToPlainBytes(buf, password){
 }
 
 /* ================================================================
-   PDF encryption (EXPERIMENTAL): add RC4-128 password protection to a
+   PDF encryption: add RC4-128 password protection to a
    plain PDF before export. Built on the same MD5/RC4/key-derivation
    primitives already verified correct against a real file above —
    this is the standard security handler's Algorithm 3 (computing /O)
@@ -1434,7 +1581,7 @@ async function decryptPdfToPlainBytes(buf, password){
    (/U), run in the encrypt direction over every string and stream.
    ================================================================ */
 async function encryptPdfDoc(pdfDoc, password){
-  const { PDFName, PDFDict, PDFArray, PDFString, PDFHexString, PDFRawStream, PDFNumber } = PDFLib;
+  const { PDFName, PDFDict, PDFArray, PDFString, PDFHexString, PDFRawStream, PDFStream, PDFNumber } = PDFLib;
   const context = pdfDoc.context;
 
   function dictKeys(dict){
@@ -1447,6 +1594,14 @@ async function encryptPdfDoc(pdfDoc, password){
     if(Array.isArray(arr.array)) return arr.array.length;
     if(typeof arr.length === 'number') return arr.length;
     return 0;
+  }
+  // Catches any stream subtype, not just PDFRawStream specifically — a
+  // stream we silently skip here stays plaintext while the file claims to
+  // be fully encrypted, which readers render as blank/broken pages.
+  function isStreamLike(o){
+    if(PDFStream && typeof PDFStream === 'function' && o instanceof PDFStream) return true;
+    if(o instanceof PDFRawStream) return true;
+    return !!(o && typeof o === 'object' && o.dict instanceof PDFDict && o.contents instanceof Uint8Array);
   }
 
   // Ensure a document /ID exists (needed for key derivation); reuse the
@@ -1514,7 +1669,7 @@ async function encryptPdfDoc(pdfDoc, password){
       }
       return obj;
     }
-    if(obj instanceof PDFRawStream){
+    if(isStreamLike(obj)){
       await encryptWalk(obj.dict, objNum, genNum);
       if(obj.contents && obj.contents.length){
         const objKey = pdfObjectKey(fileKey, objNum, genNum, false);
@@ -1582,14 +1737,14 @@ async function parsePDF(file){
   } catch(e){}
 
   const fields = [];
-  if(title) fields.push({id:'title', cat:'identity', k:'Title', v:title, editable:true, _pdfSetter:'setTitle'});
-  if(author) fields.push({id:'author', cat:'identity', k:'Author', v:author, editable:true, _pdfSetter:'setAuthor'});
-  if(subject) fields.push({id:'subject', cat:'identity', k:'Subject', v:subject, editable:true, _pdfSetter:'setSubject'});
-  if(creator) fields.push({id:'creator', cat:'origin', k:'Creator app', v:creator, editable:true, _pdfSetter:'setCreator'});
-  if(producer) fields.push({id:'producer', cat:'origin', k:'Producer', v:producer, editable:true, _pdfSetter:'setProducer'});
-  if(keywords) fields.push({id:'keywords', cat:'content', k:'Keywords', v:keywords, flag:true, editable:false, readonly:true});
-  if(creationDate) fields.push({id:'created', cat:'timeline', k:'Created', v:creationDate.toISOString().replace('T',' ').slice(0,19), editable:false, readonly:true});
-  if(modDate) fields.push({id:'modified', cat:'timeline', k:'Modified', v:modDate.toISOString().replace('T',' ').slice(0,19), editable:false, readonly:true});
+  pushField(fields, title, {id:'title', cat:'identity', k:'Title', _infoKey:'Title'});
+  pushField(fields, author, {id:'author', cat:'identity', k:'Author', _infoKey:'Author'});
+  pushField(fields, subject, {id:'subject', cat:'identity', k:'Subject', _infoKey:'Subject'});
+  pushField(fields, creator, {id:'creator', cat:'origin', k:'Creator app', _infoKey:'Creator'});
+  pushField(fields, producer, {id:'producer', cat:'origin', k:'Producer', _infoKey:'Producer'});
+  pushField(fields, keywords, {id:'keywords', cat:'content', k:'Keywords', flag:true, _infoKey:'Keywords'});
+  pushField(fields, creationDate && creationDate.toISOString().replace('T',' ').slice(0,19), {id:'created', cat:'timeline', k:'Created', isDate:true, _infoKey:'CreationDate', _isDate:true});
+  pushField(fields, modDate && modDate.toISOString().replace('T',' ').slice(0,19), {id:'modified', cat:'timeline', k:'Modified', isDate:true, _infoKey:'ModDate', _isDate:true});
   fields.push({id:'encryption', cat:'security', k:'Encryption', v:'None', good:true, editable:false, readonly:true});
 
   if(fields.filter(f=>f.cat!=='security').length === 0){
@@ -1631,23 +1786,35 @@ async function parsePDF(file){
     name: file.name, typeLabel:'PDF Document', size: humanFileSize(file.size), dims,
     icon: PDF_ICON, previewType:'document', previewURL,
     previewText: previewURL ? null : `${pageCount} page${pageCount!==1?'s':''} document — visual page preview isn't available.`,
-    scanMsgs:['Reading file structure…','Parsing document info dictionary…','Rendering page preview…','Done — here is what MIRA found.'],
+    previewOpenURL: URL.createObjectURL(file), previewOpenLabel: 'Open full PDF',
+    scanMsgs:['Reading file structure…','Parsing document info dictionary…','Rendering page preview…','Done — here is what MYRA found.'],
     fields, rawCmd:`pdfinfo ${file.name}`, raw: rawDump(), notes,
     ctaSub:'Export a cleaned copy with identity and origin fields removed.',
-    engineNote:'Live read &amp; write via pdf-lib — Title/Author/Subject/Creator/Producer are edited and stripped for real on export. Creation/modification dates are read-only in this build.',
+    engineNote:'Title, Author, Subject, Creator, Producer, Keywords and dates can all be edited, removed or added when missing. You can also set a password on the exported copy. Your original file is never modified.',
     canEncrypt: true,
     setExportPassword(pw){ encryptPassword = pw || null; },
     hasExportPassword(){ return !!encryptPassword; },
     exportFn: async ()=>{
       fields.forEach(f=>{
-        if(!f._pdfSetter) return;
-        const val = f.removed ? '' : f.v;
-        pdfDoc[f._pdfSetter](val);
+        if(!f._infoKey || f.empty) return;
+        if(f.removed){
+          setPdfInfoValue(pdfDoc, f._infoKey, '');
+          return;
+        }
+        if(f._isDate){
+          const pdfDate = toPdfDateString(f.v);
+          if(pdfDate) setPdfInfoValue(pdfDoc, f._infoKey, pdfDate);
+          // if the edited text doesn't parse as a date, leave the original
+          // value untouched rather than writing something that could
+          // corrupt the field
+        } else {
+          setPdfInfoValue(pdfDoc, f._infoKey, f.v);
+        }
       });
       if(encryptPassword){
         await encryptPdfDoc(pdfDoc, encryptPassword);
       }
-      const bytes = await pdfDoc.save();
+      const bytes = await pdfDoc.save({ useObjectStreams: false });
       const blob = new Blob([bytes], {type:'application/pdf'});
       return {blob, filename: file.name};
     }
@@ -1655,7 +1822,7 @@ async function parsePDF(file){
 }
 
 /* ---- Password-protected PDF: unlock, read metadata + real preview via pdf.js (read-only) ---- */
-async function unlockEncryptedPDFReadOnly(file, password, rendered){
+async function unlockEncryptedPDFReadOnly(file, password, rendered, decryptError){
   const pdf = rendered.pdf;
   const { info } = await pdf.getMetadata().catch(()=>({info:{}}));
   const pageCount = pdf.numPages;
@@ -1677,27 +1844,44 @@ async function unlockEncryptedPDFReadOnly(file, password, rendered){
     fields.unshift({id:'no-meta', cat:'identity', k:'Document info', v:'None found in this file', good:true, editable:false, readonly:true});
   }
 
+  const errMsg = decryptError ? (decryptError.stack || decryptError.message || String(decryptError)) : '(no error captured)';
+  const diag = decryptError && decryptError.pdfDiagnostics;
+
   function rawDump(){
     const lines = ['[<b>Document Info dictionary</b>] (decrypted)'];
     Object.keys(info || {}).forEach(k=>{ if(info[k]) lines.push(String(k).padEnd(14)+': '+info[k]); });
     if(lines.length === 1) lines.push('(no document info found)');
+    lines.push('');
+    lines.push('[<b>Why editing isn\'t available</b>]');
+    lines.push(escapeHtml(errMsg));
+    if(diag){
+      lines.push('');
+      lines.push('[<b>Candidates tried</b>] (every /Encrypt-shaped object found in the file)');
+      lines.push('count'.padEnd(16)+': '+(diag.candidates ? diag.candidates.length : 0));
+      lines.push('object numbers'.padEnd(16)+': '+(diag.candidates ? diag.candidates.join(', ') : 'n/a'));
+      if(diag.attemptsLog && diag.attemptsLog.length){
+        lines.push('');
+        (diag.attemptsLog || []).forEach(l => lines.push(escapeHtml(l)));
+      }
+    }
     return lines.join('\n');
   }
 
   const notes = [];
   if(info.Author) notes.push(`This PDF lists <b>${escapeHtml(info.Author)}</b> as the author in its document info.`);
   notes.push('This file was <b>encrypted</b> and required a password to open.');
-  notes.push('Editing and export are read-only for password-protected PDFs in this build.');
+  notes.push('This file was unlocked for viewing, but full editing wasn\'t possible. The Raw data tab has the technical reason.');
 
   return {
     sourceKey: 'real-' + Date.now(),
     name: file.name, typeLabel:'PDF Document (unlocked, read-only)', size: humanFileSize(file.size),
     dims: pageCount + ' page' + (pageCount!==1?'s':''),
     icon: PDF_ICON, previewType:'document', previewURL: rendered.dataURL,
+    previewOpenURL: URL.createObjectURL(file), previewOpenLabel: 'Open full PDF (password required)',
     scanMsgs:[],
     fields, rawCmd:`pdfinfo --password *** ${file.name}`, raw: rawDump(), notes,
-    ctaSub:'Export is not available for password-protected PDFs in this build.',
-    engineNote:'Unlocked and read via pdf.js — full decryption for editing wasn\'t possible for this file (see notes), so this view is read-only.',
+    ctaSub:'Export isn\'t available for this file.',
+    engineNote:'Unlocked for viewing only — full editing wasn\'t possible for this file. The Raw data tab has the technical reason.',
     readOnlyFormat: true
   };
 }
@@ -1727,11 +1911,13 @@ async function unlockEncryptedPDF(file, password){
       'This file was <b>password-protected</b> and has been decrypted for editing.',
       ...result.notes
     ];
-    result.engineNote = 'EXPERIMENTAL: decrypted with a hand-implemented PDF security handler (RC4/AES-128) and handed to pdf-lib as a plain file — full edit and export now work the same as any other PDF. Please verify the exported file opens correctly before relying on it.';
+    result.engineNote = 'This file was password-protected and has been unlocked for editing. Exports are saved unprotected unless you set a new password — check that the exported file opens as expected.';
     return result;
   } catch(err){
-    console.warn('Full PDF decryption failed, falling back to read-only view:', err);
-    return unlockEncryptedPDFReadOnly(file, password, rendered);
+    // Full decryption failed — fall back to the read-only pdf.js view.
+    // The reason is shown to the user directly in the Raw data tab
+    // (see unlockEncryptedPDFReadOnly below), not just logged.
+    return unlockEncryptedPDFReadOnly(file, password, rendered, err);
   }
 }
 
@@ -1753,23 +1939,39 @@ async function parseMP4(file){
   }
   function readUint64(o){ return dv.getUint32(o) * 4294967296 + dv.getUint32(o+4); }
   function macToDate(sec){ const epochDiff = 2082844800; return new Date((sec - epochDiff) * 1000); }
+  // Reverse of macToDate: turns an edited "YYYY-MM-DD HH:MM:SS" value back
+  // into seconds-since-1904, the integer format MP4 actually stores.
+  function dateToMacEpoch(text){
+    const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec((text||'').trim());
+    if(!m) return null;
+    const [,y,mo,d,h,mi,se] = m;
+    const utcMs = Date.UTC(+y, +mo-1, +d, +h, +mi, +se);
+    if(isNaN(utcMs)) return null;
+    return Math.round(utcMs/1000) + 2082844800;
+  }
+  function writeUint64(dvOut, offset, value){
+    dvOut.setUint32(offset, Math.floor(value / 4294967296));
+    dvOut.setUint32(offset+4, value >>> 0);
+  }
 
   let creation = null, modification = null, timescale = null, durationSec = null;
+  let mvhdVersion = null, creationOffset = null, modificationOffset = null;
   const moov = findBox(0, buf.byteLength, 'moov');
   if(moov){
     const mvhd = findBox(moov.dataStart, moov.dataStart + moov.size - 8, 'mvhd');
     if(mvhd){
       const version = dv.getUint8(mvhd.dataStart);
+      mvhdVersion = version;
       let p = mvhd.dataStart + 4;
       if(version === 1){
-        creation = readUint64(p); p += 8;
-        modification = readUint64(p); p += 8;
+        creationOffset = p; creation = readUint64(p); p += 8;
+        modificationOffset = p; modification = readUint64(p); p += 8;
         timescale = dv.getUint32(p); p += 4;
         const duration = readUint64(p);
         durationSec = duration / timescale;
       } else {
-        creation = dv.getUint32(p); p += 4;
-        modification = dv.getUint32(p); p += 4;
+        creationOffset = p; creation = dv.getUint32(p); p += 4;
+        modificationOffset = p; modification = dv.getUint32(p); p += 4;
         timescale = dv.getUint32(p); p += 4;
         const duration = dv.getUint32(p);
         durationSec = duration / timescale;
@@ -1778,8 +1980,11 @@ async function parseMP4(file){
   }
 
   const fields = [];
-  if(creation) fields.push({id:'created', cat:'timeline', k:'Created', v: macToDate(creation).toISOString().replace('T',' ').slice(0,19), editable:false, readonly:true});
-  if(modification) fields.push({id:'modified', cat:'timeline', k:'Modified', v: macToDate(modification).toISOString().replace('T',' ').slice(0,19), editable:false, readonly:true});
+  if(mvhdVersion !== null){
+    const iso = sec => macToDate(sec).toISOString().replace('T',' ').slice(0,19);
+    pushField(fields, creation && iso(creation), {id:'created', cat:'timeline', k:'Created', isDate:true, _mp4Offset:creationOffset, _mp4Version:mvhdVersion});
+    pushField(fields, modification && iso(modification), {id:'modified', cat:'timeline', k:'Modified', isDate:true, _mp4Offset:modificationOffset, _mp4Version:mvhdVersion});
+  }
   if(durationSec) fields.push({id:'duration', cat:'timeline', k:'Duration', v: durationSec.toFixed(1)+'s', editable:false, readonly:true});
   fields.push({id:'encryption', cat:'security', k:'Encryption', v:'None', good:true, editable:false, readonly:true});
   fields.push({id:'signature', cat:'security', k:'Digital signature', v:'None', good:true, editable:false, readonly:true});
@@ -1827,17 +2032,29 @@ async function parseMP4(file){
 
   const notes = [];
   if(creation) notes.push(`This video's container reports a creation time of <b>${macToDate(creation).toLocaleString()}</b>.`);
-  notes.push('MP4 support in this build is <b>read-only</b> — removing container metadata requires re-muxing the file, which isn\'t implemented yet.');
+  notes.push('Created and Modified can be edited or cleared. Duration is structural, not editable — changing it without touching the actual video data would desync playback.');
 
   return {
     sourceKey: 'real-' + Date.now(),
     name: file.name, typeLabel:'MP4 Video', size: humanFileSize(file.size), dims: durationSec ? durationSec.toFixed(1)+'s' : '',
-    icon: MP4_ICON, previewType: previewURL ? 'video' : 'document', previewURL,
-    scanMsgs:['Reading container structure…','Walking moov/mvhd atoms…','Grabbing a preview frame…','Done — here is what MIRA found.'],
+    icon: MP4_ICON, previewType: 'video', previewURL, previewOpenURL: URL.createObjectURL(file), previewOpenLabel: 'Open in new tab',
+    scanMsgs:['Reading container structure…','Walking moov/mvhd atoms…','Grabbing a preview frame…','Done — here is what MYRA found.'],
     fields, rawCmd:`mp4box -info ${file.name}`, raw: rawDump(), notes,
-    ctaSub:'MP4 export is not available in this build yet.',
-    engineNote:'Live read via a custom MP4 atom parser (no library) — this format is read-only in this build; edit and export controls are hidden for video.',
-    readOnlyFormat: true
+    ctaSub:'Export a cleaned copy with the container timestamps edited or removed.',
+    engineNote:'Created/Modified are stored as fixed-width numbers inside the file, so edits are written back in place — no re-encoding, nothing else in the file changes.',
+    exportFn: async ()=>{
+      const outBuf = buf.slice(0);
+      const outDv = new DataView(outBuf);
+      fields.forEach(f=>{
+        if(f._mp4Offset == null || f.empty) return;
+        const epochVal = f.removed ? 0 : dateToMacEpoch(f.v);
+        if(epochVal == null) return; // unparseable edit — leave original bytes untouched
+        if(f._mp4Version === 1) writeUint64(outDv, f._mp4Offset, epochVal);
+        else outDv.setUint32(f._mp4Offset, epochVal >>> 0);
+      });
+      const blob = new Blob([outBuf], {type: file.type || 'video/mp4'});
+      return {blob, filename: file.name};
+    }
   };
 }
 
@@ -1853,115 +2070,22 @@ async function detectAndParse(file){
   if(ext === 'docx') return await parseDOCX(file);
   if(ext === 'pdf') return await parsePDF(file);
   if(ext === 'mp4') return await parseMP4(file);
-  const err = new Error(`".${ext || '?'}" isn't a supported format yet. MIRA currently reads JPG, PNG, PDF, DOCX and MP4.`);
+  const err = new Error(`".${ext || '?'}" isn't a supported format yet. MYRA currently reads JPG, PNG, PDF, DOCX and MP4.`);
   err.unsupported = true;
   throw err;
 }
 
 /* ================================================================
-   SAMPLE / DEMO DATA (fallback, no real engine behind these)
-   ================================================================ */
-const SAMPLES = {
-  jpg: {
-    sourceKey:'jpg', demo:true,
-    name:'wedding_photo_final_v3.jpg', typeLabel:'JPEG Image', size:'4.2 MB', dims:'4032 × 3024',
-    icon: JPG_ICON, previewType:'photo',
-    scanMsgs:['Reading file structure…','Analyzing EXIF & XMP data…','Checking for hidden content…','I found a few things worth knowing.'],
-    fields:[
-      {id:'author', cat:'identity', k:'Author', v:'A. Reinholt'},
-      {id:'copyright-owner', cat:'identity', k:'Copyright owner', v:'—'},
-      {id:'camera-owner', cat:'identity', k:'Camera owner', v:'iPhone (A. Reinholt)'},
-      {id:'software-used', cat:'origin', k:'Software used', v:'Adobe Lightroom 13.2'},
-      {id:'generator', cat:'origin', k:'Generator', v:'Apple iOS 17.4'},
-      {id:'device-model', cat:'origin', k:'Device model', v:'iPhone 14 Pro'},
-      {id:'gps', cat:'origin', k:'GPS location', v:"41.3874° N, 2.1686° E", flag:true},
-      {id:'created', cat:'timeline', k:'Created', v:'2026-06-14 17:22:03'},
-      {id:'modified', cat:'timeline', k:'Modified', v:'2026-07-02 09:11:47'},
-      {id:'thumb', cat:'content', k:'Embedded thumbnail', v:'Present', flag:true},
-      {id:'comments', cat:'content', k:'Comments', v:'None'},
-      {id:'hidden', cat:'content', k:'Hidden objects', v:'None'},
-      {id:'encryption', cat:'security', k:'Encryption', v:'None', good:true},
-      {id:'signature', cat:'security', k:'Digital signature', v:'None', good:true},
-    ],
-    rawCmd:'exiftool wedding_photo_final_v3.jpg',
-    raw:`[<b>EXIF</b>]
-Make                : Apple
-Model               : iPhone 14 Pro
-Software            : 17.4
-DateTimeOriginal    : 2026:06:14 17:22:03
-GPSLatitude         : 41 deg 23' 14.64" N
-GPSLongitude        : 2 deg 10' 6.96" E
-
-[<b>XMP</b>]
-creator             : A. Reinholt
-creatorTool         : Adobe Lightroom 13.2
-ModifyDate          : 2026:07:02 09:11:47
-
-[<b>IPTC</b>]
-CopyrightNotice     :
-ObjectName          :`,
-    notes:[
-      'This photo still carries <b>precise GPS coordinates</b> from where it was taken.',
-      'Edited in <b>Lightroom</b>, then re-exported by <b>iOS 17.4</b> — both left a trace.',
-      'An <b>embedded thumbnail</b> may show an older, uncropped version of the image.',
-      'No encryption or signature was found — this file is fully readable by anyone.'
-    ],
-    ctaSub:'Export a cleaned copy with GPS location and the embedded thumbnail removed.',
-    engineNote:'This is a sample file with no real bytes behind it — editing works, but Export just simulates the download.'
-  },
-  docx: {
-    sourceKey:'docx', demo:true,
-    name:'Q3_infra_review.docx', typeLabel:'Word Document', size:'182 KB', dims:'14 pages',
-    icon: DOCX_ICON, previewType:'document',
-    scanMsgs:['Reading document structure…','Scanning revision history…','Checking comments & embedded fonts…','I found a few things worth knowing.'],
-    fields:[
-      {id:'author', cat:'identity', k:'Author', v:'S. Okafor'},
-      {id:'last-modified-by', cat:'identity', k:'Last modified by', v:'T. Meyers', flag:true},
-      {id:'company', cat:'identity', k:'Company', v:'—'},
-      {id:'application', cat:'origin', k:'Application', v:'Microsoft Word 16.89'},
-      {id:'template', cat:'origin', k:'Template', v:'Normal.dotm'},
-      {id:'created', cat:'timeline', k:'Created', v:'2026-05-02 11:04:00'},
-      {id:'modified', cat:'timeline', k:'Modified', v:'2026-08-19 16:47:00'},
-      {id:'edit-time', cat:'timeline', k:'Total edit time', v:'6h 12m'},
-      {id:'tracked', cat:'content', k:'Tracked changes', v:'14 edits found', flag:true},
-      {id:'comments', cat:'content', k:'Comments', v:'3 comments', flag:true},
-      {id:'fonts', cat:'content', k:'Embedded fonts', v:'2 embedded'},
-      {id:'encryption', cat:'security', k:'Encryption', v:'None', good:true},
-      {id:'signature', cat:'security', k:'Digital signature', v:'None', good:true},
-    ],
-    rawCmd:'unzip -p Q3_infra_review.docx docProps/core.xml',
-    raw:`[<b>docProps/core.xml</b>]
-dc:creator          : S. Okafor
-cp:lastModifiedBy   : T. Meyers
-dcterms:created     : 2026-05-02T11:04:00Z
-dcterms:modified    : 2026-08-19T16:47:00Z
-
-[<b>docProps/app.xml</b>]
-Application         : Microsoft Office Word
-AppVersion          : 16.0089
-Template            : Normal.dotm
-TotalTime           : 372
-
-[<b>word/comments.xml</b>]
-comments            : 3 found`,
-    notes:[
-      'This document has <b>14 tracked changes</b> still attached — reviewers can see the edit history.',
-      'It names <b>T. Meyers</b> as the last person to modify the file, even though S. Okafor is listed as author.',
-      'There are <b>3 comments</b> left in the margins that won\'t be visible unless you check the review pane.',
-      'No encryption or signature was found — this file is fully readable by anyone.'
-    ],
-    ctaSub:'Export a cleaned copy with tracked changes, comments and reviewer names removed.',
-    engineNote:'This is a sample file with no real bytes behind it — editing works, but Export just simulates the download.'
-  }
-};
-
-/* ================================================================
    STATE / RENDERING
    ================================================================ */
-let activeFile = SAMPLES.jpg;
-let recentList = [SAMPLES.jpg, SAMPLES.docx];
-let lastRemoved = [];
-function getField(id){ return activeFile.fields.find(f => f.id === id); }
+// The whole app's state lives in these three variables — no framework,
+// no store, just plain JS. activeFile is whatever parser's result object
+// (see the field-shape comment above) is currently showing on screen;
+// everything else re-renders FROM it, never the other way round.
+let activeFile = null;       // the currently open file's parsed result, or null if none is open
+
+// Look up one field on the currently open file by its id (e.g. 'author').
+function getField(id){ return activeFile ? activeFile.fields.find(f => f.id === id) : undefined; }
 
 function fgIconSVG(name){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${CAT_ICONS[name]}</svg>`; }
 
@@ -1987,29 +2111,55 @@ const PREVIEW_SVG = {
 
 function renderPreview(sample){
   let inner;
-  if(sample.previewURL){
+  if(sample.previewType === 'video' && sample.previewOpenURL){
+    const posterAttr = sample.previewURL ? ` poster="${sample.previewURL}"` : '';
+    inner = `<video controls playsinline preload="metadata"${posterAttr}><source src="${sample.previewOpenURL}"></video>`;
+  } else if(sample.previewURL){
     const fallback = (PREVIEW_SVG[sample.previewType] || PREVIEW_SVG.document).replace(/"/g,'&quot;');
-    inner = `<img src="${sample.previewURL}" alt="File preview" onerror="this.parentElement.innerHTML='${fallback}'">`;
+    const img = `<img src="${sample.previewURL}" alt="File preview" onerror="this.parentElement.innerHTML='${fallback}'">`;
+    inner = sample.previewOpenURL
+      ? `<a href="${sample.previewOpenURL}" target="_blank" rel="noopener" title="Open full size in a new tab">${img}</a>`
+      : img;
   } else if(sample.previewText){
     inner = `<div class="preview-textbox">${escapeHtml(sample.previewText) || '(no extractable text)'}</div>`;
   } else {
     inner = PREVIEW_SVG[sample.previewType] || PREVIEW_SVG.document;
   }
+  const openLink = sample.previewOpenURL
+    ? `<a class="preview-open-link" href="${sample.previewOpenURL}" target="_blank" rel="noopener">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 4h6v6M10 14L20 4M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></svg>
+         ${sample.previewOpenLabel || 'Open in new tab'}
+       </a>`
+    : '';
   const engineNote = sample.engineNote ? `<div class="engine-note">${sample.engineNote}</div>` : '';
   return `
     <div class="preview-block">
       <div class="preview-eyebrow">Preview</div>
       <div class="preview-frame">${inner}</div>
+      ${openLink}
       ${engineNote}
     </div>`;
 }
 
+// Draws the "Overview" tab: groups sample.fields by category (identity,
+// origin, timeline, content, security — in that fixed order), skipping
+// any category with nothing in it. Read-only display — editing happens
+// in the Editor tab (renderEditor below); this just reflects the data.
 function renderFindings(sample){
   const panel = document.getElementById('findingsPanel');
   const groupsHTML = CATEGORY_ORDER.map((cat,gi) => {
     const meta = CATEGORY_META[cat];
-    const rows = sample.fields.filter(f => f.cat === cat);
+    const rows = sample.fields.filter(f => f.cat === cat && !f.empty);   // unset fields live only in the editor
     if(!rows.length) return '';
+    let securityAction = '';
+    if(cat === 'security' && sample.canEncrypt && !sample.readOnlyFormat){
+      const isSet = sample.hasExportPassword && sample.hasExportPassword();
+      securityAction = `
+      <button class="sec-password-btn" data-action="add-password" type="button" title="${isSet ? 'Change or remove the export password' : 'Password-protect the exported file'}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        <span>${isSet ? 'Password set — change or remove' : 'Add password to export'}</span>
+      </button>`;
+    }
     return `
     <div class="finding-group" style="animation-delay:${gi*0.06}s">
       <div class="fg-head">
@@ -2025,11 +2175,18 @@ function renderFindings(sample){
             </span>
           </div>`).join('')}
       </div>
+      ${securityAction}
     </div>`;
   }).join('');
   panel.innerHTML = renderPreview(sample) + groupsHTML;
 }
 
+// One <tr> for the Editor table. A field renders one of three ways,
+// depending on its state — this is where the "edit/readonly/removed"
+// rules from the field-shape comment actually take visual effect:
+//   removed  -> "— removed —" text + an Undo link
+//   readonly -> the value, with no buttons (can't touch it, by design)
+//   normal   -> the value, with Edit (pencil) and Remove (trash) buttons
 function editorRowHTML(r, delay){
   const style = `style="animation-delay:${delay}s"`;
   if(r.removed){
@@ -2038,6 +2195,14 @@ function editorRowHTML(r, delay){
       <td class="prop">${escapeHtml(r.k)}</td>
       <td class="val removed-val">— removed —</td>
       <td class="row-actions"><button class="undo-link" data-undo="${r.id}">Undo</button></td>
+    </tr>`;
+  }
+  if(r.empty){
+    return `
+    <tr data-row data-fid="${r.id}" class="is-empty" ${style}>
+      <td class="prop">${escapeHtml(r.k)}</td>
+      <td class="val val-empty" data-val>Not set</td>
+      <td class="row-actions"><button class="add-link" data-edit="${r.id}" type="button" title="Add ${escapeHtml(r.k)}">+ Add</button></td>
     </tr>`;
   }
   if(r.readonly){
@@ -2059,10 +2224,13 @@ function editorRowHTML(r, delay){
     </tr>`;
 }
 
+// Draws the "Metadata editor" tab — same grouping-by-category as
+// renderFindings, but every field becomes a real table row via
+// editorRowHTML above, so it can actually be edited/removed/undone.
 function renderEditor(sample){
   const body = document.getElementById('metaTableBody');
   if(sample.readOnlyFormat){
-    body.innerHTML = `<tr><td colspan="3" style="padding:16px;color:var(--text-3);font-style:italic;">This format is read-only in the current build — see the Overview tab for what MIRA found.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="3" style="padding:16px;color:var(--text-3);font-style:italic;">This file is read-only — see the Overview tab for what MYRA found.</td></tr>`;
     return;
   }
   let i = 0;
@@ -2077,80 +2245,50 @@ function renderEditor(sample){
   }).join('');
 }
 
+// Draws the "Raw data" tab — just the raw text each parser already built
+// (sample.raw), plus the fake command-line label (sample.rawCmd) that
+// makes it read like a terminal dump. Nothing generic here; each parser
+// writes its own raw text in its own parseXxx() function.
 function renderRaw(sample){
   document.getElementById('rawBoxCmd').textContent = sample.rawCmd;
   document.getElementById('rawBoxContent').innerHTML = sample.raw;
-}
-
-function renderNotes(sample){
-  document.getElementById('rpNotes').innerHTML = sample.notes.map(n => `
-    <div class="rp-note"><div class="rp-dot"></div><p>${n}</p></div>`).join('');
-  document.getElementById('rpCtaSub').textContent = sample.ctaSub;
 }
 
 function renderHeader(sample){
   document.getElementById('fileIcon').innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${sample.icon}</svg>`;
   document.getElementById('fileName').textContent = sample.name;
   document.getElementById('fileSub').textContent = [sample.typeLabel, sample.size, sample.dims].filter(Boolean).join(' · ');
-  document.getElementById('titlebarStatus').textContent = sample.name;
+  setStatus(sample.name);
   const exportBtn = document.getElementById('exportBtn');
-  const removeBtn = document.getElementById('removeBtn');
-  const lockBtn = document.getElementById('pdfLockBtn');
-  const lockLabel = document.getElementById('pdfLockBtnLabel');
   if(sample.readOnlyFormat){
     exportBtn.disabled = true; exportBtn.title = 'Export not available for this format yet';
-    removeBtn.disabled = true; removeBtn.title = 'Editing not available for this format yet';
   } else {
     exportBtn.disabled = false; exportBtn.title = '';
-    removeBtn.disabled = false; removeBtn.title = '';
-  }
-  if(sample.canEncrypt && !sample.readOnlyFormat){
-    lockBtn.style.display = '';
-    const isSet = sample.hasExportPassword && sample.hasExportPassword();
-    lockLabel.textContent = isSet ? 'Password set' : 'Add password';
-    lockBtn.title = isSet ? 'Change or remove the export password' : 'Password-protect the exported file';
-  } else {
-    lockBtn.style.display = 'none';
   }
 }
 
-function renderRecentPopover(){
-  const pop = document.getElementById('recentPopover');
-  pop.innerHTML = recentList.map(item => `
-    <div class="recent-item ${item.sourceKey===activeFile.sourceKey ? 'active':''}" data-key="${item.sourceKey}">
-      <div class="ri-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${item.icon}</svg></div>
-      <div class="ri-name">${escapeHtml(item.name)}</div>
-      <svg class="ri-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12l4 4L19 6"/></svg>
-    </div>`).join('');
-  pop.querySelectorAll('.recent-item').forEach(item=>{
-    item.addEventListener('click', ()=>{
-      closeAllPopovers();
-      const key = item.dataset.key;
-      const target = recentList.find(f=>f.sourceKey===key);
-      if(!target || target === activeFile) return;
-      showResult(target, {fast:true});
-    });
-  });
-}
-
+// Called after ANY edit/remove/undo — re-draws Overview and Editor from
+// activeFile.fields so both tabs always agree with each other. This is
+// the one place that keeps "editing" and "viewing" in sync: nothing
+// mutates the DOM directly when you edit a field, it mutates the data
+// (field.v / field.removed) and then calls this to redraw from scratch.
 function refreshViews(){
   renderFindings(activeFile);
   renderEditor(activeFile);
 }
 
+// Called once, right after a file finishes parsing: sets it as
+// activeFile and draws every tab.
 function renderAllFromFile(sample){
   activeFile = sample;
-  lastRemoved = [];
   renderHeader(sample);
   renderFindings(sample);
   renderEditor(sample);
   renderRaw(sample);
-  renderNotes(sample);
-  renderRecentPopover();
 }
 
 /* ================================================================
-   FLOW: landing -> scanning -> results (real files + demo samples)
+   FLOW: landing -> scanning -> results
    ================================================================ */
 const landingView = document.getElementById('landingView');
 const appView = document.getElementById('appView');
@@ -2178,23 +2316,6 @@ function playScanMessages(msgs, fast){
   });
 }
 
-function showResult(sample, opts){
-  opts = opts || {};
-  landingView.style.display = 'none';
-  appView.style.display = 'flex';
-  errorState.style.display = 'none';
-  passwordState.style.display = 'none';
-  scanState.style.display = 'flex';
-  resultsState.style.display = 'none';
-  document.getElementById('titlebarStatus').textContent = 'Analyzing…';
-  scanFileLabel.textContent = `${sample.name} — ${sample.size}`;
-  playScanMessages(sample.scanMsgs, opts.fast).then(()=>{
-    scanState.style.display = 'none';
-    resultsState.style.display = 'flex';
-    renderAllFromFile(sample);
-  });
-}
-
 function showError(message, filename){
   landingView.style.display = 'none';
   appView.style.display = 'flex';
@@ -2203,7 +2324,7 @@ function showError(message, filename){
   passwordState.style.display = 'none';
   errorState.style.display = 'flex';
   document.getElementById('errorDetail').textContent = message;
-  document.getElementById('titlebarStatus').textContent = filename ? `Couldn't read ${filename}` : 'No file loaded';
+  setStatus(filename ? `Couldn't read ${filename}` : 'No file loaded');
 }
 
 let pendingPasswordFile = null;
@@ -2218,7 +2339,7 @@ function showPasswordPrompt(file){
   document.getElementById('pwFileLabel').textContent = `${file.name} — ${humanFileSize(file.size)}`;
   document.getElementById('pwInput').value = '';
   document.getElementById('pwError').textContent = '';
-  document.getElementById('titlebarStatus').textContent = 'Password required';
+  setStatus('Password required');
   setTimeout(()=>document.getElementById('pwInput').focus(), 60);
 }
 
@@ -2231,7 +2352,6 @@ async function attemptUnlock(){
   document.getElementById('pwError').textContent = '';
   try {
     const result = await unlockEncryptedPDF(pendingPasswordFile, password);
-    recentList.unshift(result);
     passwordState.style.display = 'none';
     resultsState.style.display = 'flex';
     renderAllFromFile(result);
@@ -2249,7 +2369,7 @@ document.getElementById('pwCancelBtn').addEventListener('click', ()=>{
   appView.style.display = 'none';
   landingView.style.display = 'flex';
   pendingPasswordFile = null;
-  document.getElementById('titlebarStatus').textContent = 'No file loaded';
+  setStatus('No file loaded');
 });
 
 async function handleIncomingFile(file){
@@ -2260,13 +2380,12 @@ async function handleIncomingFile(file){
   passwordState.style.display = 'none';
   resultsState.style.display = 'none';
   scanState.style.display = 'flex';
-  document.getElementById('titlebarStatus').textContent = 'Analyzing…';
+  setStatus('Analyzing…');
   scanFileLabel.textContent = `${file.name} — ${humanFileSize(file.size)}`;
   const genericMsgs = ['Reading file…','Parsing metadata…','Checking for hidden content…'];
   const minWait = playScanMessages(genericMsgs, false);
   try {
     const [result] = await Promise.all([detectAndParse(file), minWait]);
-    recentList.unshift(result);
     scanState.style.display = 'none';
     resultsState.style.display = 'flex';
     renderAllFromFile(result);
@@ -2298,54 +2417,26 @@ document.getElementById('errorRetryBtn').addEventListener('click', ()=>{
   errorState.style.display = 'none';
   appView.style.display = 'none';
   landingView.style.display = 'flex';
-  document.getElementById('titlebarStatus').textContent = 'No file loaded';
+  setStatus('No file loaded');
 });
 
-/* ---------------- Sidebar: new file / popovers / about modal ---------------- */
-document.getElementById('newFileBtn').addEventListener('click', ()=>{
-  closeAllPopovers();
+/* ---------------- Sidebar: logo + wordmark doubles as the Home button ---------------- */
+function goHome(){
   resultsState.style.display = 'none';
   scanState.style.display = 'none';
   errorState.style.display = 'none';
   passwordState.style.display = 'none';
   appView.style.display = 'none';
   landingView.style.display = 'flex';
-  document.getElementById('titlebarStatus').textContent = 'No file loaded';
-});
-
-const popoverPairs = [
-  {btn: document.getElementById('recentBtn'), pop: document.getElementById('recentPopover')},
-  {btn: document.getElementById('formatsBtn'), pop: document.getElementById('formatsPopover')},
-  {btn: document.getElementById('settingsBtn'), pop: document.getElementById('settingsPopover')},
-];
-function closeAllPopovers(){ popoverPairs.forEach(p => p.pop.classList.remove('show')); }
-popoverPairs.forEach(({btn, pop})=>{
-  btn.addEventListener('click', (e)=>{
-    e.stopPropagation();
-    const willShow = !pop.classList.contains('show');
-    closeAllPopovers();
-    if(willShow){ pop.classList.add('show'); if(pop.id==='recentPopover') renderRecentPopover(); }
-  });
-});
-document.addEventListener('click', (e)=>{
-  const clickedInsideAny = popoverPairs.some(({btn, pop}) => pop.contains(e.target) || btn === e.target || btn.contains(e.target));
-  if(!clickedInsideAny) closeAllPopovers();
-});
-renderRecentPopover();
-
-/* ---------------- About MIRA modal ---------------- */
-const aboutOverlay = document.getElementById('aboutOverlay');
-function openAbout(){ aboutOverlay.classList.add('show'); }
-function closeAbout(){ aboutOverlay.classList.remove('show'); }
-document.getElementById('sidebarOwl').addEventListener('click', openAbout);
-document.getElementById('sidebarOwl').addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); openAbout(); }});
-document.getElementById('aboutClose').addEventListener('click', closeAbout);
-aboutOverlay.addEventListener('click', (e)=>{ if(e.target === aboutOverlay) closeAbout(); });
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeAbout(); });
+  setStatus('No file loaded');
+}
+document.getElementById('sidebarBrand').addEventListener('click', goHome);
+document.getElementById('sidebarBrand').addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); goHome(); }});
 
 /* ---------------- PDF export password modal ---------------- */
 const lockOverlay = document.getElementById('lockOverlay');
 function openLockModal(){
+  if(!activeFile) return;
   document.getElementById('lockPwInput').value = '';
   document.getElementById('lockPwConfirm').value = '';
   document.getElementById('lockPwError').textContent = '';
@@ -2356,7 +2447,13 @@ function openLockModal(){
   setTimeout(()=>document.getElementById('lockPwInput').focus(), 60);
 }
 function closeLockModal(){ lockOverlay.classList.remove('show'); }
-document.getElementById('pdfLockBtn').addEventListener('click', openLockModal);
+// The Add-password button lives inside the Security section, which is
+// regenerated from scratch on every render (see renderFindings) — so it
+// can't be wired up once at page load like a static button. Delegate the
+// click to the panel it's rendered into instead.
+document.getElementById('findingsPanel').addEventListener('click', (e)=>{
+  if(e.target.closest('[data-action="add-password"]')) openLockModal();
+});
 document.getElementById('lockClose').addEventListener('click', closeLockModal);
 lockOverlay.addEventListener('click', (e)=>{ if(e.target === lockOverlay) closeLockModal(); });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLockModal(); });
@@ -2402,13 +2499,24 @@ document.getElementById('metaTableBody').addEventListener('click', (e)=>{
     if(row.classList.contains('editing')) return;
     row.classList.add('editing');
     const valCell = row.querySelector('[data-val]');
-    const currentVal = valCell.textContent;
-    valCell.innerHTML = `<input type="text" value="${currentVal.replace(/"/g,'&quot;')}">`;
+    const target = getField(fieldId);
+    const isEmpty = !!(target && target.empty);
+    const currentVal = isEmpty ? '' : valCell.textContent;
+    const ph = target && target.isDate ? 'YYYY-MM-DD HH:MM:SS' : 'Enter a value';
+    valCell.innerHTML = `<input type="text" value="${currentVal.replace(/"/g,'&quot;')}" placeholder="${ph}">`;
     const input = valCell.querySelector('input');
     input.focus(); input.select();
     function commit(){
       const field = getField(fieldId);
-      if(field) field.v = input.value.trim() || currentVal;
+      const typed = input.value.trim();
+      if(field && typed){
+        let val = typed;
+        if(field.isDate){
+          val = normalizeDateInput(typed);
+          if(!val){ showToast('Dates need the format YYYY-MM-DD HH:MM:SS'); refreshViews(); return; }
+        }
+        field.v = val; field.empty = false;
+      }
       refreshViews();
     }
     input.addEventListener('blur', commit);
@@ -2417,7 +2525,11 @@ document.getElementById('metaTableBody').addEventListener('click', (e)=>{
 
   if(removeBtn){
     const f = getField(removeBtn.dataset.remove);
-    if(f) f.removed = true;
+    if(f){
+      // a field the file never had just goes back to "Not set" instead of showing as removed
+      if(f._origEmpty){ f.v = ''; f.empty = true; f.removed = false; }
+      else f.removed = true;
+    }
     refreshViews();
   }
 
@@ -2440,32 +2552,8 @@ function showToast(msg){
   toastTimer = setTimeout(()=>toast.classList.remove('show'), 5000);
 }
 
-function removeFlagged(){
-  const targets = activeFile.fields.filter(f => f.flag && !f.removed && !f.readonly);
-  targets.forEach(f => f.removed = true);
-  lastRemoved = targets.map(f => f.id);
-  refreshViews();
-  showToast(lastRemoved.length
-    ? `Removed ${lastRemoved.length} flagged field${lastRemoved.length>1?'s':''}.`
-    : 'No removable flagged fields.');
-}
 
-function undoLastRemoval(){
-  lastRemoved.forEach(id => { const f = getField(id); if(f) f.removed = false; });
-  lastRemoved = [];
-  refreshViews();
-  toast.classList.remove('show');
-}
-
-document.getElementById('removeBtn').addEventListener('click', ()=>{
-  if(activeFile.readOnlyFormat) return;
-  const confirmOn = document.getElementById('confirmRemoveToggle').checked;
-  if(confirmOn && !window.confirm('Remove all flagged metadata fields from this file?')) return;
-  removeFlagged();
-});
-document.getElementById('toastUndo').addEventListener('click', undoLastRemoval);
-
-/* ---------------- Export (real download for real files, simulated for demo samples) ---------------- */
+/* ---------------- Export ---------------- */
 function flashLabel(btn, original, label, ms){
   btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12l4 4L19 6"/></svg> ${label}`;
   btn.disabled = true;
@@ -2475,9 +2563,7 @@ function flashLabel(btn, original, label, ms){
   }, ms || 1800);
 }
 document.getElementById('exportBtn').addEventListener('click', async function(){
-  if(activeFile.readOnlyFormat) return;
-  const confirmOn = document.getElementById('confirmExportToggle').checked;
-  if(confirmOn && !window.confirm('Export a cleaned copy of this file?')) return;
+  if(!activeFile || activeFile.readOnlyFormat) return;
   const btn = this;
   const original = btn.innerHTML;
   if(activeFile.exportFn){
@@ -2490,8 +2576,6 @@ document.getElementById('exportBtn').addEventListener('click', async function(){
       btn.innerHTML = original; btn.disabled = false;
       showToast('Export failed: ' + (err.message || 'unknown error'));
     }
-  } else {
-    flashLabel(btn, original, 'Exported (demo)');
   }
 });
 
@@ -2503,10 +2587,19 @@ function setTheme(mode){
   document.documentElement.setAttribute('data-theme', mode);
   themeToggle.innerHTML = mode === 'dark' ? sunIcon : moonIcon;
 }
-setTheme('light');
+setTheme('dark');
 themeToggle.addEventListener('click', ()=>{
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   setTheme(isDark ? 'light' : 'dark');
+  document.body.classList.remove('theme-blinking');
+  themeToggle.classList.remove('blink');
+  void themeToggle.offsetWidth; // restart the CSS animation even if the class was already present
+  document.body.classList.add('theme-blinking');
+  themeToggle.classList.add('blink');
+  setTimeout(()=>{
+    document.body.classList.remove('theme-blinking');
+    themeToggle.classList.remove('blink');
+  }, 520);
 });
 </script>
 </body>
