@@ -1,0 +1,2606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MYRA — My Redact Assistant</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/piexifjs/1.0.6/piexif.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.min.js"></script>
+<style>
+  :root{
+    /* Light mode — crisp white cards on a soft neutral page, deep
+       near-black text for real contrast rather than a washed-out gray. */
+    --page-bg:#EDECEA;
+    --bg:#ffffff;
+    --bg-subtle:#FAFAF9;
+    --surface:#FCFCFB;
+    --border:#E6E4E1;
+    --border-strong:#D3D1CD;
+    --text-1:#15151A;
+    --text-2:#68665F;
+    --text-3:#A3A19B;
+    --accent:#15151A;
+    --accent-strong:#000000;
+    --accent-soft:#F1F0ED;
+    --accent-soft-2:#E5E3DE;
+    --danger:#15151A;
+    --good:#8A8882;
+    --on-accent:#ffffff;
+    --radius-s:6px;
+    --radius-m:10px;
+    --radius-l:16px;
+    --sidebar-w:76px;
+  }
+  html[data-theme="dark"]{
+    /* True AMOLED black — not dark gray. Panels step up only one or two
+       shades from pure black so content still has gentle depth, and text
+       sits just under pure white to avoid glare on OLED screens. */
+    --page-bg:#000000;
+    --bg:#000000;
+    --bg-subtle:#0A0A0A;
+    --surface:#0D0D0D;
+    --border:#1C1C1C;
+    --border-strong:#2A2A2A;
+    --text-1:#F2F2F0;
+    --text-2:#99988F;
+    --text-3:#55544E;
+    --accent:#F2F2F0;
+    --accent-strong:#FFFFFF;
+    --accent-soft:#141414;
+    --accent-soft-2:#1E1E1E;
+    --danger:#F2F2F0;
+    --good:#6E6D66;
+    --on-accent:#000000;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  html{scroll-padding-top:env(safe-area-inset-top, 0px);}
+  :root{padding-top:env(safe-area-inset-top, 0px);padding-bottom:env(safe-area-inset-bottom, 0px);}
+  body{
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    background:var(--page-bg);
+    color:var(--text-1);
+    -webkit-font-smoothing:antialiased;
+    font-size:14px;
+    line-height:1.5;
+    overflow-x:hidden;
+    transition:background .2s ease;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  ::selection{background:var(--accent-soft-2);}
+  button,input{font-family:inherit;color:inherit;}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:4px;}
+
+  /* ---------- App frame — fills the page, not a floating window card ---------- */
+  .app-frame{
+    width:100%;
+    min-height:100vh;
+    margin:0;
+    background:var(--bg);
+    border:none;
+    border-radius:0;
+    box-shadow:none;
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    transition:background .2s ease, border-color .2s ease;
+  }
+  /* Theme toggle now lives in the sidebar as a normal .side-btn (desktop:
+     vertical rail; mobile: the same rail flattened into a top bar — see
+     the mobile media query). It's a real <button>, unlike its sibling
+     <div> icons, so it needs its own reset to drop default button chrome. */
+  button.theme-toggle{background:none;border:1px solid transparent;font:inherit;}
+  .theme-toggle svg{transform-box:fill-box;transform-origin:center;}
+  @keyframes owlThemeBlink{0%,100%{transform:scaleY(1);}45%,55%{transform:scaleY(0.08);}}
+  .theme-toggle.blink svg{animation:owlThemeBlink .5s ease;}
+  body.theme-blinking .owl-mark .eye-pupil{transform-box:fill-box;transform-origin:center;animation:owlThemeBlink .5s ease;}
+
+  /* Smooth, whole-app cross-fade between light and dark instead of an
+     instant snap — kept to the containers that actually carry theme
+     colors, rather than a blanket rule on every element. */
+  body, .app-frame, .sidebar, .side-btn, .workspace,
+  .modal-card, .modal-close, .icon-popover, .recent-popover, .recent-item,
+  .finding-group, .fg-icon, .preview-frame, .preview-textbox, .toast,
+  .meta-table td, .meta-table tr.cat-row td, .pw-input, .dropzone, .btn,
+  .segmented, .seg-btn, .table-wrap {
+    transition: background-color .28s ease, border-color .28s ease, color .2s ease;
+  }
+
+  .frame-body{flex:1;display:flex;min-height:0;position:relative;}
+
+  /* ---------- Owl mark ---------- */
+  .owl-mark svg{display:block;}
+  .owl-mark.pulse .eye-pupil{animation:blinkPulse 2.4s ease-in-out infinite;}
+  @keyframes blinkPulse{0%,100%{opacity:1;}50%{opacity:0.25;}}
+  .scan-ring{animation:spin 3.2s linear infinite;transform-origin:center;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:translateY(0);}}
+  .tl-hand{transform-origin:12px 12px;animation:tickHand 4s ease-in-out infinite;}
+  @keyframes tickHand{0%,100%{transform:rotate(-4deg);}50%{transform:rotate(4deg);}}
+  .sec-shield{animation:shieldBreathe 3.4s ease-in-out infinite;}
+  @keyframes shieldBreathe{0%,100%{opacity:1;}50%{opacity:0.55;}}
+
+  /* ================= LANDING VIEW ================= */
+  .view-landing{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:56px 32px 44px;text-align:center;position:relative;
+  }
+  .landing-logo{margin-bottom:22px;}
+  .landing-wordmark{font-size:15px;font-weight:600;letter-spacing:0.16em;color:var(--text-1);margin-top:10px;}
+  .landing-tagline{font-size:30px;font-weight:300;letter-spacing:-0.01em;color:var(--text-1);margin:22px 0 8px;max-width:520px;}
+  .landing-sub{font-size:13.5px;color:var(--text-2);margin-bottom:40px;}
+  .dropzone{
+    width:100%;max-width:560px;border:1.5px dashed var(--border-strong);border-radius:var(--radius-l);
+    background:var(--surface);padding:56px 32px;cursor:pointer;transition:border-color .18s ease, background .18s ease;
+  }
+  .dropzone:hover, .dropzone.drag{border-color:var(--accent);background:var(--accent-soft);}
+  .dropzone .dz-icon{width:40px;height:40px;margin:0 auto 18px;color:var(--text-3);transition:color .2s ease, transform .2s ease;}
+  .dropzone:hover .dz-icon{color:var(--accent);transform:translateY(-2px);}
+  .dz-title{font-size:14.5px;font-weight:500;color:var(--text-1);margin-bottom:20px;}
+  .dz-browse{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:var(--accent);background:none;border:none;cursor:pointer;padding:6px 4px;}
+  .formats-row{margin-top:26px;font-size:12px;color:var(--text-3);display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;}
+  .formats-row .fmt{color:var(--text-2);font-family:'IBM Plex Mono',monospace;font-size:11.5px;}
+  .formats-row .sep{color:var(--border-strong);}
+
+  /* ================= APP SHELL ================= */
+  .view-app{display:none;flex:1;min-height:0;width:100%;}
+  .sidebar{
+    width:var(--sidebar-w);flex-shrink:0;border-right:1px solid var(--border);
+    display:flex;flex-direction:column;align-items:center;padding:18px 0;background:var(--surface);position:relative;
+  }
+  .sidebar-brand{
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    margin-bottom:24px;cursor:pointer;background:none;border:none;padding:0;
+    transition:opacity .15s ease;
+  }
+  .sidebar-brand:hover{opacity:0.72;}
+  .sidebar-wordmark{
+    font-size:9px;font-weight:700;letter-spacing:0.14em;color:var(--text-3);
+    writing-mode:vertical-rl;text-orientation:mixed;transform:rotate(180deg);
+  }
+  .side-btn{
+    width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-s);
+    color:var(--text-3);cursor:pointer;border:1px solid transparent;transition:color .18s ease, transform .18s ease;position:relative;
+  }
+  .side-btn svg{width:18px;height:18px;transition:transform .18s ease;}
+  .side-btn:hover{color:var(--text-1);transform:translateY(-1px);}
+  .side-btn:hover svg{transform:scale(1.08);}
+  .side-btn.active{color:var(--accent);}
+  .side-btn.active::after{
+    content:"";position:absolute;left:50%;bottom:2px;width:14px;height:1.4px;background:var(--accent);
+    transform:translateX(-50%);animation:underlineIn .25s ease;
+  }
+  @keyframes underlineIn{from{width:0;opacity:0;}to{width:14px;opacity:1;}}
+  .side-bottom{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:6px;}
+
+  .modal-overlay{
+    display:none;position:fixed;inset:0;background:rgba(20,20,18,0.42);z-index:100;
+    align-items:center;justify-content:center;
+  }
+  .modal-overlay.show{display:flex;}
+  .modal-card{
+    position:relative;width:340px;background:var(--bg);border:1px solid var(--border-strong);border-radius:var(--radius-l);
+    padding:36px 30px 28px;text-align:center;box-shadow:0 30px 70px -20px rgba(0,0,0,0.35);
+    animation:fadeUp .25s ease;
+  }
+  .modal-close{
+    position:absolute;top:14px;right:14px;width:26px;height:26px;border-radius:6px;border:none;background:none;
+    color:var(--text-3);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  }
+  .modal-close svg{width:13px;height:13px;}
+  .modal-close:hover{color:var(--text-1);background:var(--bg-subtle);}
+  .modal-owl{margin:0 auto 16px;width:52px;}
+  .modal-wordmark{font-size:15px;font-weight:600;letter-spacing:0.16em;color:var(--text-1);}
+  .modal-divider{width:32px;height:1px;background:var(--border-strong);margin:18px auto;}
+  .modal-note{font-size:12.5px;color:var(--text-2);line-height:1.6;}
+
+  .workspace{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;position:relative;}
+  .ws-header{padding:20px 28px 16px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-shrink:0;}
+  .file-meta-title{display:flex;align-items:center;gap:12px;}
+  .file-icon{width:34px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--text-1);flex-shrink:0;}
+  .file-icon svg{width:26px;height:26px;}
+  .file-name{font-size:15px;font-weight:600;color:var(--text-1);}
+  .file-sub{font-size:12px;color:var(--text-3);margin-top:2px;font-family:'IBM Plex Mono',monospace;}
+  .ws-actions{display:flex;gap:8px;flex-shrink:0;align-items:center;}
+  .btn{font-size:12.5px;font-weight:500;padding:8px 14px;border-radius:var(--radius-s);border:1px solid var(--border-strong);background:var(--bg);color:var(--text-1);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s ease;}
+  .btn svg{width:13px;height:13px;}
+  .btn:hover{border-color:var(--text-3);}
+  .btn-ghost{border-color:transparent;color:var(--text-2);}
+  .btn-ghost:hover{background:var(--bg-subtle);color:var(--danger);}
+  .btn-primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);}
+  .btn-primary:hover{background:var(--accent-strong);border-color:var(--accent-strong);}
+  .btn[disabled]{opacity:0.45;cursor:default;}
+
+  .segmented{display:flex;gap:2px;background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--radius-s);padding:2px;width:max-content;margin:16px 28px 0;flex-shrink:0;}
+  .seg-btn{font-size:12.5px;font-weight:500;color:var(--text-2);padding:6px 14px;border-radius:5px;cursor:pointer;border:none;background:none;}
+  .seg-btn.active{background:var(--bg);color:var(--text-1);box-shadow:0 1px 2px rgba(20,20,30,0.06);}
+
+  .ws-content{flex:1;display:flex;min-height:0;}
+  .ws-main{flex:1;overflow-y:auto;padding:24px 28px 60px;}
+
+  .scan-state{display:none;flex-direction:column;align-items:center;justify-content:center;padding:100px 20px;text-align:center;}
+  .scan-status{margin-top:22px;font-size:13.5px;color:var(--text-2);height:20px;}
+  .scan-file{font-size:12px;color:var(--text-3);margin-top:6px;font-family:'IBM Plex Mono',monospace;}
+  .pw-form{display:flex;gap:8px;margin-top:6px;}
+  .pw-input{
+    font-family:inherit;font-size:13.5px;padding:10px 14px;border:1px solid var(--border-strong);
+    border-radius:var(--radius-s);background:var(--bg);color:var(--text-1);width:220px;outline:none;
+  }
+  .pw-input:focus{border-color:var(--accent);}
+  .pw-error{font-size:12px;color:var(--danger);margin-top:12px;min-height:16px;}
+
+  .preview-block{margin-bottom:26px;padding-bottom:22px;border-bottom:1px solid var(--border);opacity:0;animation:fadeUp .4s ease forwards;}
+  .preview-eyebrow{font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-3);margin-bottom:10px;}
+  .preview-frame{width:230px;border:1px solid var(--border);border-radius:var(--radius-m);overflow:hidden;background:var(--bg-subtle);}
+  .preview-frame svg{display:block;width:100%;height:auto;}
+
+  .findings{display:none;}
+  .findings.show{display:block;}
+  .finding-group{padding:20px 0;border-bottom:1px solid var(--border);opacity:0;animation:fadeUp .45s ease forwards;}
+  .finding-group:first-child{padding-top:4px;}
+  .finding-group:last-child{border-bottom:none;}
+  .fg-head{display:flex;align-items:center;gap:9px;margin-bottom:14px;}
+  .fg-icon{width:20px;height:20px;display:flex;align-items:center;justify-content:center;color:var(--text-3);transition:color .2s ease, transform .2s ease;}
+  .fg-icon svg{width:18px;height:18px;}
+  .finding-group:hover .fg-icon{color:var(--text-1);transform:translateY(-1px);}
+  .fg-title{font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-2);}
+  .fg-list{display:grid;grid-template-columns:1fr 1fr;gap:0 32px;}
+  .fg-row{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px dashed var(--border);font-size:13px;gap:12px;opacity:0;animation:fadeUp .4s ease forwards;}
+  .fg-row .k{color:var(--text-2);}
+  .fg-row .v{color:var(--text-1);font-weight:500;font-family:'IBM Plex Mono',monospace;font-size:12.5px;text-align:right;display:inline-flex;align-items:center;gap:5px;justify-content:flex-end;}
+  .v.flag{color:var(--danger);font-weight:600;}
+  .v.good{color:var(--good);}
+  .v.removed{color:var(--text-3);font-style:italic;}
+  .tag-icon{width:11px;height:11px;flex-shrink:0;}
+  .sec-password-btn{
+    display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:8px 12px;
+    font-size:12.5px;font-weight:500;color:var(--text-1);background:var(--bg-subtle);
+    border:1px solid var(--border-strong);border-radius:var(--radius-s);cursor:pointer;
+    transition:border-color .15s ease, background-color .15s ease;
+  }
+  .sec-password-btn svg{width:14px;height:14px;flex-shrink:0;}
+  .sec-password-btn:hover{border-color:var(--accent);background:var(--accent-soft);}
+
+  .editor{display:none;}
+  .editor.show{display:block;}
+  .table-wrap{border:1px solid var(--border);border-radius:var(--radius-m);overflow:hidden;}
+  table.meta-table{width:100%;border-collapse:collapse;}
+  .meta-table thead th{text-align:left;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-3);background:var(--bg-subtle);padding:10px 16px;border-bottom:1px solid var(--border);}
+  .meta-table td{padding:11px 16px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle;}
+  .meta-table tr:last-child td{border-bottom:none;}
+  .meta-table tbody tr{opacity:0;animation:fadeUp .4s ease forwards;}
+  .raw-box{opacity:0;animation:fadeUp .45s ease forwards;}
+  .meta-table .cat-row td{background:var(--bg-subtle);font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-3);padding:7px 16px;border-bottom:1px solid var(--border);}
+  .meta-table tr.removed .prop{color:var(--text-3);}
+  .meta-table .removed-val{color:var(--text-3) !important;font-style:italic;}
+  .meta-table .prop{color:var(--text-2);width:26%;display:flex;align-items:center;gap:6px;}
+  .meta-table .val{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--text-1);}
+  .meta-table tr.removed .val{color:var(--text-3);font-style:italic;}
+  .meta-table .val input{width:100%;font-family:'IBM Plex Mono',monospace;font-size:12.5px;border:1px solid var(--accent);border-radius:5px;padding:5px 8px;outline:none;background:var(--bg);color:var(--text-1);}
+  .row-actions{width:90px;text-align:right;white-space:nowrap;}
+  .icon-btn{width:26px;height:26px;border-radius:6px;border:1px solid transparent;background:none;color:var(--text-3);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:color .16s ease;}
+  .icon-btn svg{transition:transform .16s ease;}
+  .icon-btn:hover svg{transform:scale(1.12);}
+  .icon-btn:hover{color:var(--accent);background:var(--accent-soft);}
+  .icon-btn.danger:hover{color:var(--danger);background:var(--accent-soft);}
+  .icon-btn svg{width:13px;height:13px;}
+  .val-empty{color:var(--text-3);font-style:italic;}
+  .add-link{font-size:11.5px;color:var(--accent);cursor:pointer;background:none;border:none;font-weight:500;font-family:inherit;padding:2px 4px;}
+  .add-link:hover{text-decoration:underline;}
+  .undo-link{font-size:11.5px;color:var(--accent);cursor:pointer;background:none;border:none;font-weight:500;}
+
+  .raw-panel{display:none;}
+  .raw-panel.show{display:block;}
+  .raw-box{background:var(--bg-subtle);border:1px solid var(--border);border-radius:var(--radius-m);overflow:hidden;}
+  .raw-box-head{padding:9px 14px;border-bottom:1px solid var(--border);font-size:11.5px;color:var(--text-3);font-family:'IBM Plex Mono',monospace;display:flex;justify-content:space-between;}
+  .raw-box pre{margin:0;padding:18px 20px;font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.7;color:var(--text-2);white-space:pre-wrap;word-break:break-word;}
+  .raw-box pre b{color:var(--text-1);font-weight:600;}
+
+  .toast{
+    position:absolute;left:50%;bottom:24px;transform:translateX(-50%) translateY(12px);
+    background:var(--text-1);color:var(--bg);font-size:12.5px;padding:10px 16px;border-radius:9px;
+    display:flex;align-items:center;gap:14px;box-shadow:0 12px 30px -8px rgba(0,0,0,0.35);
+    opacity:0;pointer-events:none;transition:all .22s ease;z-index:30;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto;}
+  .toast button{background:none;border:none;color:var(--bg);font-weight:700;font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
+
+  .preview-frame img{display:block;width:100%;height:auto;object-fit:cover;max-height:280px;cursor:zoom-in;transition:opacity .15s ease;}
+  .preview-frame a{display:block;line-height:0;}
+  .preview-frame a:hover img{opacity:0.88;}
+  .preview-frame video{display:block;width:100%;height:auto;max-height:320px;background:#000;}
+  .preview-textbox{padding:14px 16px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;line-height:1.6;color:var(--text-2);max-height:150px;overflow:hidden;}
+  .preview-open-link{
+    display:inline-flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;font-weight:500;
+    color:var(--accent);text-decoration:none;
+  }
+  .preview-open-link svg{width:13px;height:13px;flex-shrink:0;}
+  .preview-open-link:hover{text-decoration:underline;}
+  .field-readonly-tag{font-size:10.5px;color:var(--text-3);font-style:italic;}
+  .engine-note{font-size:11.5px;color:var(--text-3);margin-top:10px;line-height:1.5;padding-top:10px;border-top:1px dashed var(--border);}
+
+  @media (max-width:900px){
+    .fg-list{grid-template-columns:1fr;}
+  }
+
+  @media (max-width:640px){
+    body{font-size:13.5px;}
+
+    .landing-tagline{font-size:22px;}
+    .landing-logo svg, .modal-owl svg{max-width:100%;}
+    .dropzone{padding:32px 18px;max-width:100%;}
+    .formats-row{gap:6px;font-size:10.5px;row-gap:6px;}
+
+    /* Sidebar becomes a top bar on mobile — a vertical icon rail wastes
+       precious width on a phone, and pushes the workspace into a narrow
+       column. As a horizontal bar it costs one compact row instead. */
+    .view-app{flex-direction:column;}
+    .sidebar{
+      width:100%;flex-direction:row;align-items:center;
+      padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top, 0px));
+      border-right:none;border-bottom:1px solid var(--border);
+    }
+    .sidebar-brand{flex-direction:row;gap:8px;margin-bottom:0;margin-right:12px;}
+    .sidebar-wordmark{writing-mode:horizontal-tb;transform:none;font-size:11px;}
+    .side-bottom{margin-top:0;margin-left:auto;flex-direction:row;gap:4px;}
+    .side-btn{width:32px;height:32px;}
+    .side-btn svg{width:15px;height:15px;}
+
+    .ws-header{flex-direction:column;align-items:stretch;gap:12px;padding:14px 14px 10px;}
+    .file-meta-title{min-width:0;}
+    .file-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .file-sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .ws-actions{flex-wrap:wrap;}
+    .ws-actions .btn{flex:1;justify-content:center;min-width:0;}
+    .segmented{margin:10px 14px 0;}
+    .ws-main{padding:14px 14px 60px;}
+
+    /* Preview frame: fluid width instead of a fixed 230px that can overflow
+       very narrow phones. */
+    .preview-frame{width:100%;max-width:280px;}
+
+    /* Overview: stack label/value instead of squeezing them onto one line,
+       so long values (GPS coords, long filenames) never overlap the label. */
+    .fg-list{gap:0;}
+    .fg-row{flex-direction:column;align-items:flex-start;gap:3px;padding:10px 0;}
+    .fg-row .v{justify-content:flex-start;text-align:left;}
+
+    /* Editor: this was a fixed-width table you had to scroll horizontally
+       to reach the Edit/Remove buttons, which made editing on a phone
+       awkward. Turn it into a stacked card per field instead — no
+       horizontal scroll, and the edit controls sit right under the value
+       where a thumb can reach them. */
+    .table-wrap{overflow-x:visible;border:none;}
+    .meta-table{min-width:0;}
+    .meta-table thead{display:none;}
+    .meta-table, .meta-table tbody, .meta-table tr{display:block;width:100%;}
+    .meta-table tr{border:none;border-bottom:1px solid var(--border);padding:12px 2px;}
+    .meta-table tr:last-child{border-bottom:none;}
+    .meta-table tr.cat-row{border:none;padding:10px 2px 4px;background:none;}
+    .meta-table td{display:block;padding:0;border:none;width:auto;}
+    .meta-table td.prop{font-size:11.5px;color:var(--text-2);margin-bottom:4px;}
+    .meta-table td.val{font-size:13.5px;margin-bottom:8px;word-break:break-word;}
+    .meta-table tr.removed td.val{margin-bottom:0;}
+    .meta-table .row-actions{width:auto;text-align:left;}
+    .meta-table .val input{font-size:14px;padding:8px 10px;}
+
+    .pw-form{flex-direction:column;width:100%;max-width:280px;}
+    .pw-input{width:100%;box-sizing:border-box;}
+
+    .modal-card{width:88vw;padding:28px 20px 22px;}
+    .toast{width:calc(100vw - 32px);left:16px;transform:translateY(12px);}
+    .toast.show{transform:translateY(0);}
+  }
+
+</style>
+</head>
+<body>
+
+<div class="app-frame">
+  <div class="frame-body">
+
+    <!-- ============ LANDING ============ -->
+    <div class="view-landing" id="landingView">
+      <div class="landing-logo owl-mark" id="landingOwl"></div>
+      <div class="landing-wordmark">MYRA</div>
+      <div class="landing-tagline">I see what your files hide.</div>
+      <div class="landing-sub">My Redact Assistant</div>
+
+      <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Drag a file here or browse to analyze it">
+        <div class="dz-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M12 16V4M12 4L7 9M12 4l5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+        </div>
+        <div class="dz-title">Drag a file here to inspect it</div>
+        <button class="dz-browse" id="browseBtn">Browse files &nbsp;→</button>
+      </div>
+      <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf,.docx,.mp4" style="display:none">
+
+      <div class="formats-row">
+        <span class="fmt">JPG</span><span class="sep">·</span>
+        <span class="fmt">PNG</span><span class="sep">·</span>
+        <span class="fmt">PDF</span><span class="sep">·</span>
+        <span class="fmt">DOCX</span><span class="sep">·</span>
+        <span class="fmt">MP4</span>
+      </div>
+    </div>
+
+    <!-- ============ APP SHELL ============ -->
+    <div class="view-app" id="appView">
+      <div class="sidebar">
+        <div class="sidebar-brand" role="button" tabindex="0" title="Home" id="sidebarBrand">
+          <div class="owl-mark" id="sidebarOwl"></div>
+          <span class="sidebar-wordmark">MYRA</span>
+        </div>
+        <div class="side-bottom">
+          <button class="side-btn theme-toggle" id="themeToggle" title="Toggle dark mode" aria-label="Toggle dark mode"></button>
+        </div>
+      </div>
+
+      <div class="workspace">
+
+        <div class="scan-state" id="scanState">
+          <div class="owl-mark pulse" id="scanOwl" style="position:relative;"></div>
+          <div class="scan-status" id="scanStatus">Reading file structure…</div>
+          <div class="scan-file mono" id="scanFileLabel"></div>
+        </div>
+
+        <div class="scan-state" id="errorState" style="display:none;">
+          <div class="owl-mark" id="errorOwl"></div>
+          <div class="scan-status" id="errorStatus" style="color:var(--danger);font-weight:600;">Couldn't read this file.</div>
+          <div class="scan-file mono" id="errorDetail" style="max-width:360px;white-space:normal;"></div>
+          <button class="btn" id="errorRetryBtn" style="margin-top:22px;">Try another file</button>
+        </div>
+
+        <div class="scan-state" id="passwordState" style="display:none;">
+          <div class="owl-mark" id="pwOwl"></div>
+          <div class="scan-status" style="font-weight:600;">This PDF is password protected</div>
+          <div class="scan-file mono" id="pwFileLabel" style="margin-bottom:18px;"></div>
+          <div class="pw-form">
+            <input type="password" id="pwInput" class="pw-input" placeholder="Password (try leaving blank)" autocomplete="off">
+            <button class="btn btn-primary" id="pwUnlockBtn">Unlock</button>
+          </div>
+          <div class="pw-error" id="pwError"></div>
+          <button class="btn btn-ghost" id="pwCancelBtn" style="margin-top:16px;">Cancel</button>
+        </div>
+
+        <div id="resultsState" style="display:none; flex:1; flex-direction:column; min-height:0;">
+          <div class="ws-header">
+            <div class="file-meta-title">
+              <div class="file-icon" id="fileIcon"></div>
+              <div>
+                <div class="file-name" id="fileName"></div>
+                <div class="file-sub" id="fileSub"></div>
+              </div>
+            </div>
+            <div class="ws-actions">
+              <button class="btn btn-primary" id="exportBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+                Export cleaned file
+              </button>
+            </div>
+          </div>
+
+          <div class="segmented">
+            <button class="seg-btn active" data-tab="overview">Overview</button>
+            <button class="seg-btn" data-tab="editor">Metadata editor</button>
+            <button class="seg-btn" data-tab="raw">Raw data</button>
+          </div>
+
+          <div class="ws-content">
+            <div class="ws-main">
+              <div class="findings show" id="findingsPanel"></div>
+              <div class="editor" id="editorPanel">
+                <div class="table-wrap">
+                  <table class="meta-table">
+                    <thead><tr><th class="prop">Property</th><th>Value</th><th class="row-actions"></th></tr></thead>
+                    <tbody id="metaTableBody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="raw-panel" id="rawPanel">
+                <div class="raw-box">
+                  <div class="raw-box-head"><span id="rawBoxCmd"></span><span>read-only</span></div>
+                  <pre id="rawBoxContent"></pre>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="toast" id="toast">
+            <span id="toastMsg"></span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="modal-overlay" id="lockOverlay">
+  <div class="modal-card" style="text-align:left;">
+    <button class="modal-close" id="lockClose" aria-label="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+    <div style="text-align:center;">
+      <div class="modal-owl" style="margin-bottom:10px;">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" style="color:var(--text-1);margin:0 auto;display:block;"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+      </div>
+      <div class="modal-wordmark" style="font-size:14px;letter-spacing:0.08em;">PASSWORD-PROTECT EXPORT</div>
+    </div>
+    <div class="modal-divider"></div>
+    <div class="modal-note" style="margin-bottom:16px;">Sets a password on the copy you export. RC4-128 — supported by every standard PDF reader. The password is kept only in memory for this session, never stored.</div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <input type="password" id="lockPwInput" class="pw-input" placeholder="New password" autocomplete="off" style="width:100%;">
+      <input type="password" id="lockPwConfirm" class="pw-input" placeholder="Confirm password" autocomplete="off" style="width:100%;">
+    </div>
+    <div class="pw-error" id="lockPwError" style="text-align:left;"></div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn btn-ghost" id="lockRemoveBtn" style="display:none;">Remove password</button>
+      <button class="btn btn-primary" id="lockSaveBtn" style="flex:1;justify-content:center;">Set password</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   MYRA — how this file is organized
+   ================================================================
+   This is a single HTML file with everything inline: markup, styles
+   (in <style> above) and all of the app's logic (here). It's built this
+   way on purpose — no build step, no server, works by just opening the
+   file. Four small libraries are loaded from a CDN in <head> for the
+   parts that would be painful to hand-roll (JPEG EXIF, PDF, DOCX/zip,
+   PDF rendering); everything else — PNG, MP4, and all PDF encryption —
+   is written directly in this file with no dependency.
+
+   Reading order, top to bottom:
+     1. Icons & small utilities    — SVG snippets, byte/hex helpers, MD5/RC4
+     2. Format parsers             — one function per file type (parseJPG,
+                                      parsePNG, parseDOCX, parsePDF, parseMP4)
+     3. State & rendering          — turns a parsed file into the on-screen
+                                      Overview / Editor / Raw data tabs
+     4. Flow                       — drag-drop, the scanning animation,
+                                      switching between files
+     5. Event wiring               — buttons, popovers, modals, the editor's
+                                      inline-edit behaviour, theme toggle
+
+   THE CORE DATA MODEL — one shared "field" shape for every format
+   ------------------------------------------------------------------
+   Every parser (JPG/PNG/DOCX/PDF/MP4) boils a file down to the same
+   thing: a plain { name, size, fields: [...], ... } object. Everything
+   downstream — the Overview list, the editable table, removing a field,
+   exporting — works on that *one* shape, regardless of file format. A
+   single field in that `fields` array looks like this:
+
+     {
+       id:        'author',         // stable key, used to find this field again
+       cat:       'identity',       // which section it shows under:
+                                     //   identity | origin | timeline | content | security
+       k:         'Author',         // the label shown to the user
+       v:         'Jane Doe',       // the current value (edited in place when you type)
+       editable:  true,             // show an edit/remove button for it?
+       readonly:  true,             // (optional) shown, but can't be edited/removed —
+                                     //   used for things that would be unsafe or
+                                     //   meaningless to edit, like encryption status
+       flag:      true,             // (optional) worth a second look — shown in bold
+       good:      true,             // (optional) a reassuring "nothing found" field
+       removed:   false,            // (optional) set true after the Remove button is
+                                     //   used; the export step skips removed fields
+     }
+
+   Beyond that common shape, each field carries a few PRIVATE properties
+   (prefixed with "_") that only its own format's exportFn understands —
+   they're the instructions for writing an edit back into the real file:
+     _ifd, _tag      (JPG)   — which EXIF directory + tag this maps to
+     _xmlSrc, _tag   (DOCX)  — which XML file (core/app) + tag to rewrite
+     _infoKey        (PDF)   — which key in the PDF's Info dictionary
+     _isDate         (PDF/JPG) — convert the edited text into the exact
+                                  date format that format requires before saving
+     _gps, _thumb    (JPG)   — special removal-only fields with no single tag
+
+   None of this is enforced by a schema — it's just a convention every
+   parser follows, which is what lets the Overview/Editor/export code
+   stay generic instead of needing format-specific branches everywhere.
+   ================================================================ */
+
+/* ---------------- Icons ---------------- */
+const CAT_ICONS = {
+  identity:'<circle cx="12" cy="8" r="3.2"/><path d="M5 20c1.2-3.6 4-5.5 7-5.5s5.8 1.9 7 5.5"/>',
+  origin:'<circle cx="12" cy="12" r="8.5"/><path d="M15.3 8.7l-2 4.6-4.6 2 2-4.6z"/>',
+  timeline:'<circle cx="12" cy="12" r="8.5"/><path class="tl-hand" d="M12 7.5V12l3 2"/>',
+  content:'<path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/>',
+  security:'<path class="sec-shield" d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/>'
+};
+const JPG_ICON = '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5.5-5.5L4 21"/>';
+const DOCX_ICON = '<path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/>';
+const PDF_ICON = '<path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><path d="M9 15h1.4a1.3 1.3 0 0 0 0-2.6H9V17"/>';
+const MP4_ICON = '<rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 9.5l4-2.5v10l-4-2.5"/>';
+const FLAG_ICON = '<svg class="tag-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4"/><path d="M12 16.5h.01"/><path d="M10.3 3.9L2.9 17a2 2 0 0 0 1.7 3h14.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>';
+const GOOD_ICON = '<svg class="tag-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12l4 4L19 6"/></svg>';
+
+function owlSVG(size, withRing){
+  const ring = withRing ? `<circle class="scan-ring" cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 6" opacity="0.55" style="color:var(--accent)"/>` : '';
+  return `<svg width="${size}" height="${size}" viewBox="0 0 48 48" fill="none">
+    ${ring}
+    <path d="M14 20c0-6 4.5-10 10-10s10 4 10 10c0 8-3 13-10 15-7-2-10-7-10-15z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" style="color:var(--text-1)"/>
+    <circle cx="19.2" cy="20" r="4.1" stroke="currentColor" stroke-width="1.5" style="color:var(--text-1)"/>
+    <circle cx="28.8" cy="20" r="4.1" stroke="currentColor" stroke-width="1.5" style="color:var(--text-1)"/>
+    <line x1="23.3" y1="20" x2="24.7" y2="20" stroke="currentColor" stroke-width="1.5" style="color:var(--text-1)"/>
+    <circle class="eye-pupil" cx="19.2" cy="20" r="1.5" fill="var(--accent)"/>
+    <circle class="eye-pupil" cx="28.8" cy="20" r="1.5" fill="var(--accent)"/>
+    <path d="M23 24.5l1 1.6 1-1.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-1)"/>
+  </svg>`;
+}
+document.getElementById('landingOwl').innerHTML = owlSVG(52,false);
+document.getElementById('sidebarOwl').innerHTML = owlSVG(28,false);
+document.getElementById('scanOwl').innerHTML = owlSVG(64,true);
+document.getElementById('errorOwl').innerHTML = owlSVG(44,false);
+
+/* ---------------- Category meta ---------------- */
+const CATEGORY_ORDER = ['identity','origin','timeline','content','security'];
+const CATEGORY_META = {
+  identity:{title:'Identity', icon:'identity'},
+  origin:{title:'Origin', icon:'origin'},
+  timeline:{title:'Timeline', icon:'timeline'},
+  content:{title:'Content', icon:'content'},
+  security:{title:'Security', icon:'security'},
+};
+
+/* ---------------- Small utilities ---------------- */
+// There's no dedicated title bar in the UI anymore — the current file/
+// status shows in the browser tab itself instead, which is the one place
+// "blending into the UI" can mean literally zero extra screen space.
+function setStatus(text){
+  document.title = (!text || text === 'No file loaded') ? 'MYRA — My Redact Assistant' : `${text} — MYRA`;
+}
+
+function humanFileSize(bytes){
+  if(bytes < 1024) return bytes + ' B';
+  const units = ['KB','MB','GB'];
+  let u = -1;
+  do { bytes /= 1024; u++; } while(bytes >= 1024 && u < units.length-1);
+  return bytes.toFixed(bytes < 10 ? 2 : 1) + ' ' + units[u];
+}
+function fileToDataURL(file){
+  return new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = ()=>resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+function escapeXml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function toExifDateString(text){
+  const m = /^(\d{4})[-:](\d{2})[-:](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec((text||'').trim());
+  if(!m) return null;
+  const [,y,mo,d,h,mi,se] = m;
+  return `${y}:${mo}:${d} ${h}:${mi}:${se}`;
+}
+/* ---- "Add missing metadata" helpers ----
+   Every format lists ALL the fields it can store. A field the file doesn't
+   have yet is created by blankField(): empty:true, value ''. The editor
+   shows it as "Not set" with an Add button; the Overview hides it; and every
+   exportFn skips it until the user has typed a value (which clears .empty). */
+function blankField(props){ return {editable:true, ...props, v:'', empty:true, _origEmpty:true}; }
+function pushField(list, value, props){
+  list.push(value ? {editable:true, ...props, v:value} : blankField(props));
+}
+// Accepts 2024-05-01, 2024:05:01 10:30, 2024-05-01T10:30:15Z ...  Returns
+// the canonical "YYYY-MM-DD HH:MM:SS" (UTC wall-clock) or null if invalid.
+function normalizeDateInput(text){
+  const m = /^(\d{4})[-:](\d{2})[-:](\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec((text||'').trim());
+  if(!m) return null;
+  const [,y,mo,d,h='00',mi='00',se='00'] = m;
+  if(+mo<1||+mo>12||+d<1||+d>31||+h>23||+mi>59||+se>59) return null;
+  return `${y}-${mo}-${d} ${h}:${mi}:${se}`;
+}
+// EXIF/ID3-style ASCII tags only hold Latin-1: strip accents, then replace the rest.
+function latin1Safe(str){
+  return String(str).normalize('NFC').replace(/[^\x00-\xff]/g, ch=>{
+    const base = ch.normalize('NFD').replace(/[̀-ͯ]/g,'');
+    return /^[\x00-\xff]+$/.test(base) ? base : '?';
+  });
+}
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+let _downloadsCapability; // memoized promise
+function getDownloadsCapability(){
+  if(_downloadsCapability !== undefined) return _downloadsCapability;
+  if(typeof window.claude === 'object' && window.claude && typeof window.claude.use === 'function'){
+    _downloadsCapability = window.claude.use('downloads').catch(()=>null);
+  } else {
+    _downloadsCapability = Promise.resolve(null);
+  }
+  return _downloadsCapability;
+}
+function legacyDownload(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+async function downloadBlob(blob, filename){
+  const downloads = await getDownloadsCapability();
+  if(downloads){
+    try {
+      await downloads.save({ filename, data: blob });
+      return;
+    } catch(err){
+      // "declined" means the viewer said no on purpose — respect that,
+      // don't fall back to a second, unexpected download attempt.
+      if(err && err.code === 'declined') return;
+      // downloads capability failed for some other reason — fall through
+      // to the plain <a download> approach below instead of logging it
+    }
+  }
+  legacyDownload(blob, filename);
+}
+
+/* CRC32 for PNG chunk re-encoding */
+const CRC_TABLE = (()=>{
+  const t = new Uint32Array(256);
+  for(let n=0;n<256;n++){
+    let c = n;
+    for(let k=0;k<8;k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c;
+  }
+  return t;
+})();
+function crc32(bytes){
+  let c = 0xFFFFFFFF;
+  for(let i=0;i<bytes.length;i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function concatBytes(arrays){
+  let total = 0; arrays.forEach(a=>total+=a.length);
+  const out = new Uint8Array(total);
+  let off = 0; arrays.forEach(a=>{ out.set(a, off); off += a.length; });
+  return out;
+}
+function makePngChunk(type, data){
+  const typeBytes = new TextEncoder().encode(type);
+  return concatBytes([uint32be(data.length), typeBytes, data, uint32be(crc32(concatBytes([typeBytes, data])))]);
+}
+function uint32be(n){ const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0,n); return b; }
+
+/* ================================================================
+   REAL PARSERS
+   ================================================================ */
+
+/* ---- JPG (read + write via piexifjs) ---- */
+async function parseJPG(file){
+  const dataURL = await fileToDataURL(file);
+  let exifObj;
+  try { exifObj = piexif.load(dataURL); }
+  catch(e){ exifObj = {"0th":{}, "Exif":{}, "GPS":{}, "1st":{}, "thumbnail":null}; }
+
+  const IFD0 = exifObj["0th"] || {};
+  const IFDExif = exifObj["Exif"] || {};
+  const IFDGPS = exifObj["GPS"] || {};
+
+  const make = IFD0[piexif.ImageIFD.Make];
+  const model = IFD0[piexif.ImageIFD.Model];
+  const software = IFD0[piexif.ImageIFD.Software];
+  const artist = IFD0[piexif.ImageIFD.Artist];
+  const copyright = IFD0[piexif.ImageIFD.Copyright];
+  const dateTime = IFD0[piexif.ImageIFD.DateTime];
+  const dateTimeOriginal = IFDExif[piexif.ExifIFD.DateTimeOriginal];
+
+  function dmsToDecimal(dms, ref){
+    if(!dms) return null;
+    const toDeg = r => r[0]/r[1];
+    const dec = toDeg(dms[0]) + toDeg(dms[1])/60 + toDeg(dms[2])/3600;
+    return (ref === 'S' || ref === 'W') ? -dec : dec;
+  }
+  const latRef = IFDGPS[piexif.GPSIFD.GPSLatitudeRef];
+  const lonRef = IFDGPS[piexif.GPSIFD.GPSLongitudeRef];
+  const lat = dmsToDecimal(IFDGPS[piexif.GPSIFD.GPSLatitude], latRef);
+  const lon = dmsToDecimal(IFDGPS[piexif.GPSIFD.GPSLongitude], lonRef);
+  const hasGPS = lat !== null && lon !== null;
+  const gpsText = hasGPS ? `${Math.abs(lat).toFixed(4)}° ${lat<0?'S':'N'}, ${Math.abs(lon).toFixed(4)}° ${lon<0?'W':'E'}` : null;
+
+  const hasThumb = !!exifObj.thumbnail;
+
+  const fields = [];
+  pushField(fields, artist, {id:'author', cat:'identity', k:'Author', _ifd:'0th', _tag:piexif.ImageIFD.Artist});
+  pushField(fields, copyright, {id:'copyright', cat:'identity', k:'Copyright', _ifd:'0th', _tag:piexif.ImageIFD.Copyright});
+  pushField(fields, make, {id:'make', cat:'origin', k:'Camera make', _ifd:'0th', _tag:piexif.ImageIFD.Make});
+  pushField(fields, model, {id:'model', cat:'origin', k:'Camera model', _ifd:'0th', _tag:piexif.ImageIFD.Model});
+  pushField(fields, software, {id:'software', cat:'origin', k:'Software used', _ifd:'0th', _tag:piexif.ImageIFD.Software});
+  if(hasGPS) fields.push({id:'gps', cat:'origin', k:'GPS location', v:gpsText, flag:true, editable:false, _gps:true});
+  pushField(fields, dateTimeOriginal, {id:'created', cat:'timeline', k:'Created', isDate:true, _ifd:'Exif', _tag:piexif.ExifIFD.DateTimeOriginal, _isExifDate:true});
+  pushField(fields, dateTime, {id:'modified', cat:'timeline', k:'Modified', isDate:true, _ifd:'0th', _tag:piexif.ImageIFD.DateTime, _isExifDate:true});
+  fields.push({id:'thumb', cat:'content', k:'Embedded thumbnail', v: hasThumb ? 'Present' : 'None', flag:hasThumb, good:!hasThumb, editable:false, _thumb:true});
+  fields.push({id:'encryption', cat:'security', k:'Encryption', v:'None', good:true, editable:false, readonly:true});
+  fields.push({id:'signature', cat:'security', k:'Digital signature', v:'None', good:true, editable:false, readonly:true});
+
+  if(fields.filter(f=>f.cat!=='security').length === 0){
+    fields.unshift({id:'no-exif', cat:'identity', k:'EXIF data', v:'None found in this file', good:true, editable:false, readonly:true});
+  }
+
+  const img = new Image();
+  const dims = await new Promise(res=>{
+    let done = false;
+    const finish = (v)=>{ if(done) return; done = true; res(v); };
+    img.onload = ()=>finish(`${img.naturalWidth} × ${img.naturalHeight}`);
+    img.onerror = ()=>finish('');
+    img.src = dataURL;
+    setTimeout(()=>finish(''), 8000);
+  });
+
+  function rawDump(){
+    const lines = [];
+    lines.push('[<b>EXIF / TIFF</b>]');
+    if(make) lines.push('Make'.padEnd(20)+': '+make);
+    if(model) lines.push('Model'.padEnd(20)+': '+model);
+    if(software) lines.push('Software'.padEnd(20)+': '+software);
+    if(artist) lines.push('Artist'.padEnd(20)+': '+artist);
+    if(copyright) lines.push('Copyright'.padEnd(20)+': '+copyright);
+    if(dateTimeOriginal) lines.push('DateTimeOriginal'.padEnd(20)+': '+dateTimeOriginal);
+    if(dateTime) lines.push('DateTime'.padEnd(20)+': '+dateTime);
+    if(hasGPS){
+      lines.push('');
+      lines.push('[<b>GPS</b>]');
+      lines.push('GPSLatitude'.padEnd(20)+': '+lat.toFixed(6));
+      lines.push('GPSLongitude'.padEnd(20)+': '+lon.toFixed(6));
+    }
+    if(lines.length === 1) lines.push('(no EXIF tags found)');
+    return lines.join('\n');
+  }
+
+  const notes = [];
+  if(hasGPS) notes.push('This photo still carries <b>precise GPS coordinates</b> from where it was taken.');
+  if(software) notes.push(`It was processed with <b>${escapeHtml(software)}</b> — that trace is still attached.`);
+  if(hasThumb) notes.push('An <b>embedded thumbnail</b> may show an older, uncropped version of the image.');
+  if(!notes.length) notes.push('No identifying EXIF data was found in this file.');
+  notes.push('No encryption or signature was found — this file is fully readable by anyone.');
+
+  return {
+    sourceKey: 'real-' + Date.now(),
+    name: file.name, typeLabel: 'JPEG Image', size: humanFileSize(file.size), dims,
+    icon: JPG_ICON, previewType:'photo', previewURL: URL.createObjectURL(file), previewOpenURL: URL.createObjectURL(file), previewOpenLabel: 'Open full size',
+    scanMsgs:['Reading file structure…','Parsing EXIF & GPS tags…','Checking for embedded content…','Done — here is what MYRA found.'],
+    fields, rawCmd: `piexif.load("${file.name}")`, raw: rawDump(), notes,
+    ctaSub: hasGPS || hasThumb ? 'Export a cleaned copy with GPS and the embedded thumbnail removed.' : 'Export a cleaned copy of this file.',
+    engineNote: 'GPS location and the embedded thumbnail can be removed. Author, Copyright, camera, software and dates can be edited, and any empty field can be added with Add. Your original file is never modified.',
+    exportFn: async ()=>{
+      const outExif = {"0th":{...IFD0}, "Exif":{...IFDExif}, "GPS":{...IFDGPS}, "1st": exifObj["1st"]||{}, "thumbnail": hasThumb ? exifObj.thumbnail : null};
+      fields.forEach(f=>{
+        if(f._gps && f.removed) outExif["GPS"] = {};
+        if(f._thumb && f.removed) outExif["thumbnail"] = null;
+        if(f._ifd && f._tag != null && !f.empty){
+          if(f.removed){ delete outExif[f._ifd][f._tag]; }
+          else if(f._isExifDate){
+            const exifDate = toExifDateString(f.v);
+            if(exifDate) outExif[f._ifd][f._tag] = exifDate;
+          } else { outExif[f._ifd][f._tag] = latin1Safe(f.v); }
+        }
+      });
+      const exifBytes = piexif.dump(outExif);
+      const newDataURL = piexif.insert(exifBytes, dataURL);
+      const blob = await (await fetch(newDataURL)).blob();
+      return {blob, filename: file.name};
+    }
+  };
+}
+
+/* ---- PNG (custom chunk parser, no library) ---- */
+async function parsePNG(file){
+  const buf = await file.arrayBuffer();
+  const view = new DataView(buf);
+  const bytes = new Uint8Array(buf);
+  let offset = 8;
+  const chunks = [];
+  while(offset < buf.byteLength - 8){
+    const length = view.getUint32(offset);
+    const type = String.fromCharCode(bytes[offset+4],bytes[offset+5],bytes[offset+6],bytes[offset+7]);
+    const dataStart = offset + 8;
+    const data = bytes.slice(dataStart, dataStart + length);
+    chunks.push({type, data});
+    offset = dataStart + length + 4;
+    if(type === 'IEND') break;
+  }
+  const ihdr = chunks.find(c=>c.type==='IHDR');
+  let dims = '';
+  if(ihdr){
+    const dv = new DataView(ihdr.data.buffer, ihdr.data.byteOffset, ihdr.data.byteLength);
+    dims = `${dv.getUint32(0)} × ${dv.getUint32(4)}`;
+  }
+
+  function decodeTEXt(data){
+    const nullIdx = data.indexOf(0);
+    const key = new TextDecoder().decode(data.slice(0, nullIdx));
+    const val = new TextDecoder().decode(data.slice(nullIdx+1));
+    return {key, val};
+  }
+
+  const fields = [];
+  let ti = 0;
+  // Standard PNG text keywords -> which editor group they belong in.
+  const PNG_KEYS = [['Title','identity'],['Author','identity'],['Copyright','identity'],['Description','content'],['Comment','content'],['Software','origin'],['Source','origin'],['Creation Time','timeline']];
+  const pngCat = key => { const hit = PNG_KEYS.find(p=>p[0].toLowerCase()===String(key).toLowerCase()); return hit ? hit[1] : 'content'; };
+  chunks.forEach(c=>{
+    if(c.type === 'tEXt'){
+      const {key,val} = decodeTEXt(c.data);
+      fields.push({id:'png-text-'+(ti++), cat:pngCat(key), k:key, v:val, flag:true, editable:true, _chunkRef:c});
+    } else if(c.type === 'iTXt' || c.type === 'zTXt'){
+      const nullIdx = c.data.indexOf(0);
+      const key = new TextDecoder().decode(c.data.slice(0, nullIdx));
+      fields.push({id:'png-text-'+(ti++), cat:'content', k:key || (c.type+' chunk'), v:'(embedded text data)', flag:true, editable:false, readonly:true, _chunkRef:c});
+    }
+  });
+  // Offer every standard keyword the file doesn't already carry.
+  const haveKeys = new Set(fields.filter(f=>f._chunkRef).map(f=>String(f.k).toLowerCase()));
+  PNG_KEYS.forEach(([key,cat])=>{
+    if(!haveKeys.has(key.toLowerCase())) fields.push(blankField({id:'png-new-'+key.replace(/\s/g,'').toLowerCase(), cat, k:key, _pngNewKey:key}));
+  });
+  const eXIf = chunks.find(c=>c.type==='eXIf');
+  fields.push({id:'exif-chunk', cat:'content', k:'Embedded EXIF chunk', v: eXIf ? 'Present' : 'None', flag:!!eXIf, good:!eXIf, editable:false, readonly:true});
+  fields.push({id:'encryption', cat:'security', k:'Encryption', v:'None', good:true, editable:false, readonly:true});
+  fields.push({id:'signature', cat:'security', k:'Digital signature', v:'None', good:true, editable:false, readonly:true});
+
+  const previewURL = URL.createObjectURL(file);
+
+  function rawDump(){
+    const lines = ['[<b>PNG chunks</b>]'];
+    chunks.forEach(c=> lines.push(c.type.padEnd(8)+': '+c.data.length+' bytes'));
+    return lines.join('\n');
+  }
+
+  const notes = [];
+  const textCount = fields.filter(f=>f._chunkRef && f.flag && !f.empty).length;
+  if(textCount) notes.push(`This PNG has <b>${textCount} embedded text field${textCount>1?'s':''}</b> (tEXt/iTXt chunks) attached.`);
+  if(eXIf) notes.push('An <b>EXIF chunk</b> is embedded in this PNG — modern phone photos sometimes save these.');
+  if(!notes.length) notes.push('No embedded text or EXIF data was found in this file.');
+  notes.push('No encryption or signature was found — this file is fully readable by anyone.');
+
+  return {
+    sourceKey: 'real-' + Date.now(),
+    name: file.name, typeLabel: 'PNG Image', size: humanFileSize(file.size), dims,
+    icon: JPG_ICON, previewType:'photo', previewURL, previewOpenURL: previewURL, previewOpenLabel: 'Open full size',
+    scanMsgs:['Reading file structure…','Walking PNG chunks…','Checking for embedded text & EXIF…','Done — here is what MYRA found.'],
+    fields, rawCmd: `png-chunks ${file.name}`, raw: rawDump(), notes,
+    ctaSub: textCount || eXIf ? 'Export a cleaned copy with embedded text and EXIF chunks removed.' : 'Export a cleaned copy of this file.',
+    engineNote: 'Embedded text fields can be edited, removed or added (Title, Author, Description, Copyright and more). Your original file is never modified.',
+    exportFn: async ()=>{
+      const keep = [];
+      // Brand-new text fields (keyword not in the file yet) become new chunks placed just before IEND.
+      const newChunks = [];
+      fields.forEach(f=>{
+        if(!f._pngNewKey || f.empty || f.removed) return;
+        const asciiOnly = /^[\x00-\xff]*$/.test(f.v);
+        if(asciiOnly){
+          const latin = new Uint8Array([...f.v].map(ch=>ch.charCodeAt(0)));
+          newChunks.push(makePngChunk('tEXt', concatBytes([new TextEncoder().encode(f._pngNewKey), new Uint8Array([0]), latin])));
+        } else {
+          // iTXt: keyword\0 compressionFlag compressionMethod language\0 translatedKeyword\0 UTF-8 text
+          newChunks.push(makePngChunk('iTXt', concatBytes([new TextEncoder().encode(f._pngNewKey), new Uint8Array([0,0,0,0,0]), new TextEncoder().encode(f.v)])));
+        }
+      });
+      chunks.forEach(c=>{
+        if(c.type === 'IEND') keep.push(...newChunks);
+        const field = fields.find(f=>f._chunkRef === c);
+        if(field && field.removed) return;
+        let data = c.data;
+        if(field && field.editable && !field.readonly){
+          const keyBytes = new TextEncoder().encode(field.k);
+          const valBytes = new TextEncoder().encode(field.v);
+          data = concatBytes([keyBytes, new Uint8Array([0]), valBytes]);
+        }
+        keep.push(makePngChunk(c.type, data));
+      });
+      const signature = new Uint8Array([137,80,78,71,13,10,26,10]);
+      const outBytes = concatBytes([signature, ...keep]);
+      const blob = new Blob([outBytes], {type:'image/png'});
+      return {blob, filename: file.name};
+    }
+  };
+}
+
+/* ---- DOCX (read + write via JSZip, no rendering lib needed) ---- */
+async function parseDOCX(file){
+  const zip = await JSZip.loadAsync(file);
+  async function readXML(path){ const f = zip.file(path); return f ? await f.async('string') : null; }
+  const coreXML = await readXML('docProps/core.xml');
+  const appXML = await readXML('docProps/app.xml');
+  const docXML = await readXML('word/document.xml');
+  const commentsXML = await readXML('word/comments.xml');
+
+  function extractTag(xml, tag){
+    if(!xml) return null;
+    const re = new RegExp('<'+tag+'[^>]*>([\\s\\S]*?)<\\/'+tag+'>');
+    const m = xml.match(re);
+    return m ? m[1].trim() : null;
+  }
+  const NS = {
+    cp:'http://schemas.openxmlformats.org/package/2006/metadata/core-properties',
+    dc:'http://purl.org/dc/elements/1.1/',
+    dcterms:'http://purl.org/dc/terms/',
+    xsi:'http://www.w3.org/2001/XMLSchema-instance'
+  };
+  const NEW_CORE = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"></cp:coreProperties>';
+  const NEW_APP = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"></Properties>';
+  // Make sure a namespace prefix used by a new element is declared on the root.
+  function ensureNs(xml, prefix){
+    if(!NS[prefix] || xml.includes('xmlns:'+prefix+'=')) return xml;
+    return xml.replace(/<(cp:coreProperties|Properties)(\s|>)/, (m,root,tail)=> '<'+root+' xmlns:'+prefix+'="'+NS[prefix]+'"'+(tail==='>'?'>':' '));
+  }
+  // Rewrites a tag's text if it exists, otherwise INSERTS the element (this is
+  // what makes "Add" work for fields the file never had).
+  function setXmlTagValue(xml, tag, newVal, isDate){
+    // normalise <tag/> into <tag></tag> so one code path handles both
+    xml = xml.replace(new RegExp('<'+tag+'(\\s[^>]*?)?\\s*\\/>'), (m,a)=> '<'+tag+(a||'')+'></'+tag+'>');
+    const re = new RegExp('(<'+tag+'[^>]*>)([\\s\\S]*?)(<\\/'+tag+'>)');
+    if(re.test(xml)) return xml.replace(re, (m,p1,p2,p3)=> p1 + escapeXml(newVal) + p3);
+    const el = '<'+tag+(isDate?' xsi:type="dcterms:W3CDTF"':'')+'>'+escapeXml(newVal)+'</'+tag+'>';
+    const prefix = tag.includes(':') ? tag.split(':')[0] : null;
+    if(prefix) xml = ensureNs(xml, prefix);
+    if(isDate) xml = ensureNs(xml, 'xsi');
+    return xml.replace(/<\/(cp:coreProperties|Properties)>\s*$/, el+'</$1>');
+  }
+  // dcterms dates must be W3C format (2024-05-01T10:30:00Z)
+  function toW3cDate(text){
+    if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test((text||'').trim())) return text.trim();
+    const n = normalizeDateInput(text);
+    return n ? n.replace(' ','T')+'Z' : null;
+  }
+  async function registerDocPart(zip, partPath, contentType, relType){
+    const ct = zip.file('[Content_Types].xml');
+    if(ct){ let t = await ct.async('string'); if(!t.includes('/'+partPath)){ zip.file('[Content_Types].xml', t.replace('</Types>', '<Override PartName="/'+partPath+'" ContentType="'+contentType+'"/></Types>')); } }
+    const rf = zip.file('_rels/.rels');
+    if(rf){ let t = await rf.async('string'); if(!t.includes(partPath)){ zip.file('_rels/.rels', t.replace('</Relationships>', '<Relationship Id="rIdMyra'+partPath.length+'" Type="'+relType+'" Target="'+partPath+'"/></Relationships>')); } }
+  }
+
+  const creator = extractTag(coreXML,'dc:creator');
+  const lastModifiedBy = extractTag(coreXML,'cp:lastModifiedBy');
+  const created = extractTag(coreXML,'dcterms:created');
+  const modified = extractTag(coreXML,'dcterms:modified');
+  const title = extractTag(coreXML,'dc:title');
+  const application = extractTag(appXML,'Application');
+  const company = extractTag(appXML,'Company');
+  const template = extractTag(appXML,'Template');
+  const totalTimeRaw = extractTag(appXML,'TotalTime');
+
+  const trackedCount = docXML ? ((docXML.match(/<w:ins /g)||[]).length + (docXML.match(/<w:del /g)||[]).length) : 0;
+  const commentsCount = commentsXML ? (commentsXML.match(/<w:comment /g)||[]).length : 0;
+
+  let previewText = '';
+  if(docXML){
+    const matches = [...docXML.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)];
+    previewText = matches.map(m=>m[1]).join(' ').replace(/\s+/g,' ').trim().slice(0, 420);
+  }
+
+  const fields = [];
+  pushField(fields, title, {id:'title', cat:'identity', k:'Title', _xmlSrc:'core', _tag:'dc:title'});
+  pushField(fields, creator, {id:'author', cat:'identity', k:'Author', _xmlSrc:'core', _tag:'dc:creator'});
+  pushField(fields, lastModifiedBy, {id:'last-modified-by', cat:'identity', k:'Last modified by', flag:true, _xmlSrc:'core', _tag:'cp:lastModifiedBy'});
+  pushField(fields, company, {id:'company', cat:'identity', k:'Company', _xmlSrc:'app', _tag:'Company'});
+  pushField(fields, application, {id:'application', cat:'origin', k:'Application', _xmlSrc:'app', _tag:'Application'});
+  pushField(fields, template, {id:'template', cat:'origin', k:'Template', _xmlSrc:'app', _tag:'Template'});
+  pushField(fields, created, {id:'created', cat:'timeline', k:'Created', isDate:true, _xmlSrc:'core', _tag:'dcterms:created'});
+  pushField(fields, modified, {id:'modified', cat:'timeline', k:'Modified', isDate:true, _xmlSrc:'core', _tag:'dcterms:modified'});
+  if(totalTimeRaw) fields.push({id:'edit-time', cat:'timeline', k:'Total edit time', v: totalTimeRaw+' min', editable:false, readonly:true});
+  fields.push({id:'tracked', cat:'content', k:'Tracked changes', v: trackedCount ? trackedCount+' edits found' : 'None', flag: trackedCount>0, good: trackedCount===0, editable:false, readonly:true});
+  fields.push({id:'comments', cat:'content', k:'Comments', v: commentsCount ? commentsCount+' comments' : 'None', flag: commentsCount>0, good: commentsCount===0, editable:false, readonly:true});
+  fields.push({id:'encryption', cat:'security', k:'Encryption', v:'None', good:true, editable:false, readonly:true});
+  fields.push({id:'signature', cat:'security', k:'Digital signature', v:'None', good:true, editable:false, readonly:true});
+
+  function rawDump(){
+    const lines = [];
+    lines.push('[<b>docProps/core.xml</b>]');
+    if(creator) lines.push('dc:creator'.padEnd(20)+': '+creator);
+    if(lastModifiedBy) lines.push('cp:lastModifiedBy'.padEnd(20)+': '+lastModifiedBy);
+    if(created) lines.push('dcterms:created'.padEnd(20)+': '+created);
+    if(modified) lines.push('dcterms:modified'.padEnd(20)+': '+modified);
+    lines.push('');
+    lines.push('[<b>docProps/app.xml</b>]');
+    if(application) lines.push('Application'.padEnd(20)+': '+application);
+    if(template) lines.push('Template'.padEnd(20)+': '+template);
+    if(totalTimeRaw) lines.push('TotalTime'.padEnd(20)+': '+totalTimeRaw);
+    lines.push('');
+    lines.push('[<b>word/comments.xml</b>]');
+    lines.push('comments'.padEnd(20)+': '+commentsCount+' found');
+    return lines.join('\n');
+  }
+
+  const notes = [];
+  if(trackedCount) notes.push(`This document has <b>${trackedCount} tracked changes</b> still attached — reviewers can see the edit history.`);
+  if(lastModifiedBy && creator && lastModifiedBy !== creator) notes.push(`It names <b>${escapeHtml(lastModifiedBy)}</b> as the last person to modify the file, even though <b>${escapeHtml(creator)}</b> is listed as author.`);
+  if(commentsCount) notes.push(`There ${commentsCount===1?'is':'are'} <b>${commentsCount} comment${commentsCount>1?'s':''}</b> left in the margins.`);
+  if(!notes.length) notes.push('No tracked changes or comments were found in this document.');
+  notes.push('No encryption or signature was found — this file is fully readable by anyone.');
+
+  return {
+    sourceKey: 'real-' + Date.now(),
+    name: file.name, typeLabel: 'Word Document', size: humanFileSize(file.size), dims:'',
+    icon: DOCX_ICON, previewType:'document', previewText,
+    scanMsgs:['Reading document structure…','Scanning revision history…','Checking comments & properties…','Done — here is what MYRA found.'],
+    fields, rawCmd: `unzip -p ${file.name} docProps/core.xml`, raw: rawDump(), notes,
+    ctaSub: 'Export a cleaned copy with identity and origin fields removed.',
+    engineNote: 'Identity, origin and date fields can all be edited, removed or added when missing. Tracked changes and comments are shown but can\'t be removed in this version. Your original file is never modified.',
+    exportFn: async ()=>{
+      let newCore = coreXML || NEW_CORE, newApp = appXML || NEW_APP;
+      let wroteCore = !!coreXML, wroteApp = !!appXML;
+      fields.forEach(f=>{
+        if(f.readonly || f.empty) return;
+        let val = f.removed ? '' : f.v;
+        if(f.isDate && !f.removed){ const w = toW3cDate(val); if(w) val = w; else return; }
+        if(f._xmlSrc === 'core'){ newCore = setXmlTagValue(newCore, f._tag, val, f.isDate); wroteCore = true; }
+        if(f._xmlSrc === 'app'){ newApp = setXmlTagValue(newApp, f._tag, val, false); wroteApp = true; }
+      });
+      if(wroteCore){
+        zip.file('docProps/core.xml', newCore);
+        if(!coreXML) await registerDocPart(zip, 'docProps/core.xml', 'application/vnd.openxmlformats-package.core-properties+xml', 'http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties');
+      }
+      if(wroteApp){
+        zip.file('docProps/app.xml', newApp);
+        if(!appXML) await registerDocPart(zip, 'docProps/app.xml', 'application/vnd.openxmlformats-officedocument.extended-properties+xml', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties');
+      }
+      const blob = await zip.generateAsync({type:'blob'});
+      return {blob, filename: file.name};
+    }
+  };
+}
+
+/* ---- pdf.js setup (real page previews + password-protected PDF support) ---- */
+if(typeof pdfjsLib !== 'undefined'){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js';
+}
+class PasswordRequiredError extends Error {
+  constructor(file){ super('This PDF needs a password to open.'); this.needsPassword = true; this.file = file; }
+}
+function parsePdfDate(str){
+  if(!str) return null;
+  const m = /D:(\d{4})(\d{2})(\d{2})(\d{2})?(\d{2})?(\d{2})?/.exec(str);
+  if(!m) return str;
+  const [,y,mo,d,h='00',mi='00',s='00'] = m;
+  return `${y}-${mo}-${d} ${h}:${mi}:${s}`;
+}
+function toPdfDateString(text){
+  const m = /^(\d{4})[-:](\d{2})[-:](\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec((text||'').trim());
+  if(!m) return null;
+  const [,y,mo,d,h,mi,se] = m;
+  return `D:${y}${mo}${d}${h}${mi}${se}Z`;
+}
+/* Write directly to the Info dictionary instead of going through pdf-lib's
+   setAuthor()/setTitle()/etc. Those high-level setters can silently miss
+   the file's real, active Info object on documents with an unusual
+   structure — the same class of bug that made MYRA's /Encrypt lookup
+   pick the wrong object earlier. Writing the dict ourselves means we
+   always know exactly what happened. */
+function setPdfInfoValue(pdfDoc, key, value){
+  const { PDFName, PDFDict, PDFString } = PDFLib;
+  const context = pdfDoc.context;
+  let infoRef = context.trailerInfo.Info;
+  let infoDict = null;
+  if(infoRef){
+    try { infoDict = context.lookup(infoRef, PDFDict); } catch(e){ infoDict = null; }
+  }
+  if(!infoDict){
+    infoDict = context.obj({});
+    infoRef = context.register(infoDict);
+    context.trailerInfo.Info = infoRef;
+  }
+  infoDict.set(PDFName.of(key), PDFString.of(value || ''));
+}
+async function renderPdfPageToImage(buf, password){
+  const params = { data: buf.slice(0) };
+  if(password) params.password = password;
+  const pdf = await pdfjsLib.getDocument(params).promise;
+  const page = await pdf.getPage(1);
+  const baseViewport = page.getViewport({scale:1});
+  const scale = 260 / baseViewport.width;
+  const viewport = page.getViewport({scale});
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width; canvas.height = viewport.height;
+  await page.render({canvasContext: canvas.getContext('2d'), viewport}).promise;
+  return { dataURL: canvas.toDataURL('image/png'), pdf };
+}
+
+/* ================================================================
+   PDF decryption engine
+   Implements the PDF standard security handler (RC4 / AES-128, PDF spec
+   Algorithm 1 & 2) so a password-protected PDF can be turned into a
+   genuinely plain PDF and handed to pdf-lib for full read/write access —
+   not just read-only viewing. This is hand-implemented cryptography with
+   no way to test it against real files in this environment; it degrades
+   to the existing read-only pdf.js path if anything goes wrong.
+   ================================================================ */
+const PDF_PASSWORD_PAD = new Uint8Array([
+  0x28,0xBF,0x4E,0x5E,0x4E,0x75,0x8A,0x41,0x64,0x00,0x4E,0x56,0xFF,0xFA,0x01,0x08,
+  0x2E,0x2E,0x00,0xB6,0xD0,0x68,0x3E,0x80,0x2F,0x0C,0xA9,0xFE,0x64,0x53,0x69,0x7A
+]);
+
+function md5(bytes){
+  function rotl(x,c){ return (x<<c)|(x>>>(32-c)); }
+  const S = [7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,
+             5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,
+             4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,
+             6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+  const K = new Int32Array(64);
+  for(let i=0;i<64;i++) K[i] = (Math.floor(Math.abs(Math.sin(i+1)) * 4294967296)) | 0;
+  let a0=0x67452301, b0=0xefcdab89, c0=0x98badcfe, d0=0x10325476;
+  const msgLen = bytes.length;
+  const totalLen = (((msgLen+8)>>6)+1)*64;
+  const padded = new Uint8Array(totalLen);
+  padded.set(bytes);
+  padded[msgLen] = 0x80;
+  const dv = new DataView(padded.buffer);
+  const bitLenLow = (msgLen * 8) >>> 0;
+  const bitLenHigh = Math.floor(msgLen / 536870912);
+  dv.setUint32(totalLen-8, bitLenLow, true);
+  dv.setUint32(totalLen-4, bitLenHigh, true);
+  for(let chunkStart=0; chunkStart<totalLen; chunkStart+=64){
+    const M = new Int32Array(16);
+    for(let j=0;j<16;j++) M[j] = dv.getInt32(chunkStart+j*4, true);
+    let A=a0,B=b0,C=c0,D=d0;
+    for(let i=0;i<64;i++){
+      let F,g;
+      if(i<16){ F=(B&C)|((~B)&D); g=i; }
+      else if(i<32){ F=(D&B)|((~D)&C); g=(5*i+1)%16; }
+      else if(i<48){ F=B^C^D; g=(3*i+5)%16; }
+      else { F=C^(B|(~D)); g=(7*i)%16; }
+      F = (F + A + K[i] + M[g]) | 0;
+      A=D; D=C; C=B;
+      B = (B + rotl(F, S[i])) | 0;
+    }
+    a0=(a0+A)|0; b0=(b0+B)|0; c0=(c0+C)|0; d0=(d0+D)|0;
+  }
+  const out = new Uint8Array(16);
+  const odv = new DataView(out.buffer);
+  odv.setInt32(0,a0,true); odv.setInt32(4,b0,true); odv.setInt32(8,c0,true); odv.setInt32(12,d0,true);
+  return out;
+}
+
+function rc4(keyBytes, data){
+  const Sbox = new Uint8Array(256);
+  for(let i=0;i<256;i++) Sbox[i]=i;
+  let j=0;
+  for(let i=0;i<256;i++){
+    j = (j + Sbox[i] + keyBytes[i % keyBytes.length]) & 0xFF;
+    const tmp = Sbox[i]; Sbox[i]=Sbox[j]; Sbox[j]=tmp;
+  }
+  const out = new Uint8Array(data.length);
+  let i=0; j=0;
+  for(let k=0;k<data.length;k++){
+    i=(i+1)&0xFF;
+    j=(j+Sbox[i])&0xFF;
+    const tmp = Sbox[i]; Sbox[i]=Sbox[j]; Sbox[j]=tmp;
+    out[k] = data[k] ^ Sbox[(Sbox[i]+Sbox[j])&0xFF];
+  }
+  return out;
+}
+
+async function aesCbcDecrypt(keyBytes, data){
+  if(data.length <= 16) return new Uint8Array(0);
+  const iv = data.slice(0,16);
+  const ciphertext = data.slice(16);
+  try {
+    const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, {name:'AES-CBC'}, false, ['decrypt']);
+    const plain = await crypto.subtle.decrypt({name:'AES-CBC', iv}, cryptoKey, ciphertext);
+    return new Uint8Array(plain);
+  } catch(e){
+    return new Uint8Array(0);
+  }
+}
+
+function padPdfPassword(pwBytes){
+  if(pwBytes.length >= 32) return pwBytes.slice(0,32);
+  const out = new Uint8Array(32);
+  out.set(pwBytes);
+  out.set(PDF_PASSWORD_PAD.slice(0, 32-pwBytes.length), pwBytes.length);
+  return out;
+}
+
+function concatU8(arrays){
+  let total = 0; arrays.forEach(a=>total+=a.length);
+  const out = new Uint8Array(total);
+  let off = 0; arrays.forEach(a=>{ out.set(a, off); off += a.length; });
+  return out;
+}
+
+function computePdfEncryptionKey({password, prePadded, O, P, idBytes, R, keyLenBytes, encryptMetadata}){
+  const pwBytes = prePadded || padPdfPassword(new TextEncoder().encode(password || ''));
+  const pBytes = new Uint8Array(4);
+  new DataView(pBytes.buffer).setInt32(0, P|0, true);
+  let input = concatU8([pwBytes, O, pBytes, idBytes]);
+  if(R >= 4 && encryptMetadata === false){
+    input = concatU8([input, new Uint8Array([0xFF,0xFF,0xFF,0xFF])]);
+  }
+  let digest = md5(input);
+  if(R >= 3){
+    for(let i=0;i<50;i++) digest = md5(digest.slice(0, keyLenBytes));
+  }
+  return digest.slice(0, keyLenBytes);
+}
+
+function pdfObjectKey(fileKey, objNum, genNum, isAES){
+  const extra = new Uint8Array(isAES ? 9 : 5);
+  extra[0]=objNum&0xFF; extra[1]=(objNum>>8)&0xFF; extra[2]=(objNum>>16)&0xFF;
+  extra[3]=genNum&0xFF; extra[4]=(genNum>>8)&0xFF;
+  if(isAES) extra.set([0x73,0x41,0x6C,0x54], 5); // "sAlT"
+  const digest = md5(concatU8([fileKey, extra]));
+  const n = Math.min(fileKey.length+5, 16);
+  return digest.slice(0, n);
+}
+
+function bytesToHex(bytes){
+  let s = '';
+  for(let i=0;i<bytes.length;i++) s += bytes[i].toString(16).padStart(2,'0');
+  return s;
+}
+
+/* PDF spec Algorithm 5/6: compute the expected /U value for a derived file
+   key, so we can check a candidate password (including a blank one) is
+   actually correct BEFORE using it to decrypt the whole document. */
+function computeUValue(fileKey, idBytes, R){
+  const hash = md5(concatU8([PDF_PASSWORD_PAD, idBytes]));
+  if(R === 2){
+    return rc4(fileKey, hash);
+  }
+  let result = rc4(fileKey, hash);
+  for(let i=1;i<=19;i++){
+    const roundKey = new Uint8Array(fileKey.length);
+    for(let j=0;j<fileKey.length;j++) roundKey[j] = fileKey[j] ^ i;
+    result = rc4(roundKey, result);
+  }
+  return result;
+}
+
+/* Try a candidate user password; returns {key, valid} where valid means the
+   derived key's computed /U matches the file's real /U (first 16 bytes,
+   per spec — R3+ only requires that much to match). Pass prePadded (32
+   raw bytes) instead of candidatePassword to validate an already-padded
+   password recovered via Algorithm 7 below. */
+function deriveAndValidateKey(candidatePassword, params, prePadded){
+  const key = computePdfEncryptionKey({ password: candidatePassword, prePadded, ...params });
+  const computedU = computeUValue(key, params.idBytes, params.R);
+  const valid = bytesToHex(computedU.slice(0,16)) === bytesToHex(params.UBytes.slice(0,16));
+  return { key, valid };
+}
+
+/* PDF spec Algorithm 7: recover the padded USER password using only the
+   OWNER password — this is the reverse of Algorithm 3 (which computed /O
+   by encrypting the padded user password through 20 sequential RC4
+   passes keyed off the owner password). Many real-world files hand people
+   the owner password as "the PDF password" while the true user password
+   is something else entirely (or blank); this lets that still work. */
+function recoverPaddedUserPassword(ownerPassword, O, R, keyLenBytes){
+  let digest = md5(padPdfPassword(new TextEncoder().encode(ownerPassword || '')));
+  if(R >= 3){ for(let i=0;i<50;i++) digest = md5(digest.slice(0,keyLenBytes)); }
+  const key0 = digest.slice(0,keyLenBytes);
+  let recovered = O;
+  if(R >= 3){
+    for(let i=19;i>=1;i--){
+      const roundKey = new Uint8Array(key0.length);
+      for(let j=0;j<key0.length;j++) roundKey[j] = key0[j] ^ i;
+      recovered = rc4(roundKey, recovered);
+    }
+  }
+  return rc4(key0, recovered);
+}
+
+/* Attempt to turn an encrypted PDF into a genuinely plain one by decrypting
+   every string and stream in place, then stripping /Encrypt. Returns
+   decrypted PDF bytes on success, or throws if anything about the file
+   doesn't match what this implementation covers (e.g. AES-256/R6, which
+   isn't implemented). */
+async function decryptPdfToPlainBytes(buf, password){
+  const { PDFDocument, PDFName, PDFDict, PDFArray, PDFString, PDFHexString, PDFRawStream, PDFStream, PDFNumber, PDFRef } = PDFLib;
+  const pdfDoc = await PDFDocument.load(buf, {ignoreEncryption:true, updateMetadata:false, throwOnInvalidObject:false});
+  const context = pdfDoc.context;
+
+  // A file that's been incrementally re-saved can have more than one
+  // /Encrypt-shaped object physically present — old, dead ones left over
+  // from prior revisions, plus the real, current one — and figuring out
+  // which is "current" by structural position (trailer chains, /Prev
+  // pointers) has repeatedly picked the wrong one on real files. Instead
+  // of guessing structurally, collect every /Encrypt-shaped object in the
+  // file and test each one directly: whichever candidate's own /U value
+  // actually validates against a real password attempt is, by definition,
+  // the right one — correctness by verification, not by position.
+  const rawText = new TextDecoder('latin1').decode(buf);
+  const seenObjNums = new Set();
+  const candidateRefs = [];
+  for(const m of rawText.matchAll(/\/Encrypt\s+(\d+)\s+(\d+)\s+R/g)){
+    const objNum = parseInt(m[1],10);
+    if(seenObjNums.has(objNum)) continue;
+    seenObjNums.add(objNum);
+    candidateRefs.push(PDFRef.of(objNum, parseInt(m[2],10)));
+  }
+  if(context.trailerInfo.Encrypt && !seenObjNums.has(context.trailerInfo.Encrypt.objectNumber)){
+    candidateRefs.push(context.trailerInfo.Encrypt);
+  }
+  if(!candidateRefs.length) throw new Error('No /Encrypt dictionary found.');
+
+  const idArr = context.trailerInfo.ID ? context.lookup(context.trailerInfo.ID, PDFArray) : null;
+  const idBytes = idArr ? idArr.get(0).asBytes() : new Uint8Array(0);
+
+  let resolved = null; // { encryptRef, encryptDict, V, R, isAES, keyLenBytes, encryptMetadata, fileKey, strategy }
+  const attemptsLog = [];
+
+  for(const candidateRef of candidateRefs){
+    let encryptDict;
+    try { encryptDict = context.lookup(candidateRef, PDFDict); } catch(e){ continue; }
+
+    const V = encryptDict.has(PDFName.of('V')) ? encryptDict.get(PDFName.of('V')).asNumber() : 0;
+    const R = encryptDict.has(PDFName.of('R')) ? encryptDict.get(PDFName.of('R')).asNumber() : 2;
+    if(V >= 5 || R >= 5){ attemptsLog.push(`obj ${candidateRef.objectNumber}: V=${V} R=${R} — AES-256 not supported, skipped`); continue; }
+
+    const OObj = encryptDict.get(PDFName.of('O'));
+    const O = OObj ? OObj.asBytes() : new Uint8Array(32);
+    const P = encryptDict.has(PDFName.of('P')) ? encryptDict.get(PDFName.of('P')).asNumber() : 0;
+    const UObj = encryptDict.get(PDFName.of('U'));
+    const UBytes = UObj ? UObj.asBytes() : new Uint8Array(32);
+    if(O.length < 32 || UBytes.length < 16){ attemptsLog.push(`obj ${candidateRef.objectNumber}: malformed O/U, skipped`); continue; }
+
+    let encryptMetadata = true;
+    if(encryptDict.has(PDFName.of('EncryptMetadata'))){
+      const emObj = encryptDict.get(PDFName.of('EncryptMetadata'));
+      encryptMetadata = !!(emObj && emObj.asBoolean && emObj.asBoolean());
+    }
+
+    let isAES = false;
+    if(V === 4 || V === 5){
+      const cfObj = encryptDict.get(PDFName.of('CF'));
+      const cfDict = cfObj ? context.lookup(cfObj, PDFDict) : undefined;
+      if(cfDict){
+        const stdCFObj = cfDict.get(PDFName.of('StdCF'));
+        const stdCF = stdCFObj ? context.lookup(stdCFObj, PDFDict) : undefined;
+        if(stdCF && stdCF.has(PDFName.of('CFM'))){
+          isAES = /AESV2|AESV3/.test(stdCF.get(PDFName.of('CFM')).toString());
+        }
+      }
+    }
+
+    let keyLenBytes;
+    if(encryptDict.has(PDFName.of('Length'))){
+      keyLenBytes = Math.floor(encryptDict.get(PDFName.of('Length')).asNumber() / 8);
+    } else if(isAES){
+      keyLenBytes = 16;
+    } else {
+      keyLenBytes = 5;
+    }
+    keyLenBytes = Math.max(5, Math.min(keyLenBytes, 16));
+
+    const keyParams = { O, P, idBytes, R, keyLenBytes, encryptMetadata, UBytes };
+
+    const blankAttempt = deriveAndValidateKey('', keyParams);
+    if(blankAttempt.valid){
+      resolved = { encryptRef: candidateRef, encryptDict, V, R, isAES, keyLenBytes, fileKey: blankAttempt.key,
+        strategy: 'blank user password' };
+      break;
+    }
+    const typedAttempt = deriveAndValidateKey(password, keyParams);
+    if(typedAttempt.valid){
+      resolved = { encryptRef: candidateRef, encryptDict, V, R, isAES, keyLenBytes, fileKey: typedAttempt.key,
+        strategy: 'typed user password' };
+      break;
+    }
+    const recoveredPadded = recoverPaddedUserPassword(password, O, R, keyLenBytes);
+    const ownerAttempt = deriveAndValidateKey(null, keyParams, recoveredPadded);
+    if(ownerAttempt.valid){
+      resolved = { encryptRef: candidateRef, encryptDict, V, R, isAES, keyLenBytes, fileKey: ownerAttempt.key,
+        strategy: 'owner password (recovered real user password)' };
+      break;
+    }
+    attemptsLog.push(`obj ${candidateRef.objectNumber}: V=${V} R=${R} — blank/typed/owner all failed to validate`);
+  }
+
+  if(!resolved){
+    const err = new Error('Tried every /Encrypt object found in this file ('+candidateRefs.length+' candidate'+(candidateRefs.length!==1?'s':'')+') — none validated with a blank password, the typed password as user, or the typed password as owner.\n'+attemptsLog.join('\n'));
+    err.pdfDiagnostics = { candidates: candidateRefs.map(r=>r.objectNumber), attemptsLog };
+    throw err;
+  }
+
+  const { encryptRef, encryptDict, V, R, isAES, keyLenBytes, fileKey } = resolved;
+
+  function decryptForObject(bytes, objNum, genNum, isStream){
+    const objKey = pdfObjectKey(fileKey, objNum, genNum, isAES);
+    if(isAES) return aesCbcDecrypt(objKey, bytes);
+    return Promise.resolve(rc4(objKey, bytes));
+  }
+
+  function dictKeys(dict){
+    if(typeof dict.keys === 'function') return dict.keys();
+    if(typeof dict.entries === 'function') return Array.from(dict.entries()).map(e=>e[0]);
+    return [];
+  }
+  function arraySize(arr){
+    if(typeof arr.size === 'function') return arr.size();
+    if(Array.isArray(arr.array)) return arr.array.length;
+    if(typeof arr.length === 'number') return arr.length;
+    return 0;
+  }
+  async function walk(obj, objNum, genNum){
+    if(obj == null) return obj;
+    if(obj instanceof PDFDict){
+      const keys = dictKeys(obj);
+      for(const k of keys){
+        const val = obj.get(k);
+        const newVal = await walk(val, objNum, genNum);
+        if(newVal !== undefined && newVal !== val) obj.set(k, newVal);
+      }
+      return obj;
+    }
+    if(obj instanceof PDFArray){
+      const size = arraySize(obj);
+      for(let i=0;i<size;i++){
+        const val = obj.get(i);
+        const newVal = await walk(val, objNum, genNum);
+        if(newVal !== undefined && newVal !== val) obj.set(i, newVal);
+      }
+      return obj;
+    }
+    if(obj instanceof PDFRawStream){
+      await walk(obj.dict, objNum, genNum);
+      const typeName = obj.dict.has(PDFName.of('Type')) ? obj.dict.get(PDFName.of('Type')).toString() : '';
+      if(!(typeName === '/Metadata' && !encryptMetadata) && obj.contents && obj.contents.length){
+        const decrypted = await decryptForObject(obj.contents, objNum, genNum, true);
+        obj.contents = decrypted;
+        obj.dict.set(PDFName.of('Length'), PDFNumber.of(decrypted.length));
+      }
+      return obj;
+    }
+    if(obj instanceof PDFString || obj instanceof PDFHexString){
+      const raw = obj.asBytes();
+      if(!raw.length) return obj;
+      const decrypted = await decryptForObject(raw, objNum, genNum, false);
+      return PDFHexString.of(bytesToHex(decrypted));
+    }
+    return obj;
+  }
+
+  const indirectObjects = context.enumerateIndirectObjects();
+  for(const [ref, obj] of indirectObjects){
+    if(ref === encryptRef || (encryptRef && ref.objectNumber === encryptRef.objectNumber)) continue;
+    const newObj = await walk(obj, ref.objectNumber, ref.generationNumber);
+    if(newObj !== undefined && newObj !== obj){
+      context.assign(ref, newObj);
+    }
+  }
+
+  context.trailerInfo.Encrypt = undefined;
+
+  const bytes = await pdfDoc.save({ useObjectStreams: false });
+  return bytes;
+}
+
+/* ================================================================
+   PDF encryption: add RC4-128 password protection to a
+   plain PDF before export. Built on the same MD5/RC4/key-derivation
+   primitives already verified correct against a real file above —
+   this is the standard security handler's Algorithm 3 (computing /O)
+   plus the already-verified Algorithm 2 (/file key) and Algorithm 6
+   (/U), run in the encrypt direction over every string and stream.
+   ================================================================ */
+async function encryptPdfDoc(pdfDoc, password){
+  const { PDFName, PDFDict, PDFArray, PDFString, PDFHexString, PDFRawStream, PDFStream, PDFNumber } = PDFLib;
+  const context = pdfDoc.context;
+
+  function dictKeys(dict){
+    if(typeof dict.keys === 'function') return dict.keys();
+    if(typeof dict.entries === 'function') return Array.from(dict.entries()).map(e=>e[0]);
+    return [];
+  }
+  function arraySize(arr){
+    if(typeof arr.size === 'function') return arr.size();
+    if(Array.isArray(arr.array)) return arr.array.length;
+    if(typeof arr.length === 'number') return arr.length;
+    return 0;
+  }
+  // Catches any stream subtype, not just PDFRawStream specifically — a
+  // stream we silently skip here stays plaintext while the file claims to
+  // be fully encrypted, which readers render as blank/broken pages.
+  function isStreamLike(o){
+    if(PDFStream && typeof PDFStream === 'function' && o instanceof PDFStream) return true;
+    if(o instanceof PDFRawStream) return true;
+    return !!(o && typeof o === 'object' && o.dict instanceof PDFDict && o.contents instanceof Uint8Array);
+  }
+
+  // Ensure a document /ID exists (needed for key derivation); reuse the
+  // existing one if present, otherwise generate a fresh random one.
+  let idBytes;
+  if(context.trailerInfo.ID){
+    const idArr = context.lookup(context.trailerInfo.ID, PDFArray);
+    idBytes = idArr.get(0).asBytes();
+  } else {
+    idBytes = crypto.getRandomValues(new Uint8Array(16));
+    const idHex = bytesToHex(idBytes);
+    context.trailerInfo.ID = context.obj([ PDFHexString.of(idHex), PDFHexString.of(idHex) ]);
+  }
+
+  const R = 3, V = 2, keyLenBytes = 16; // RC4-128 — the same well-supported
+                                         // mode every reader handles, and
+                                         // the one already verified above.
+  const P = -1; // no restrictions signaled (this only affects what
+                // permission-respecting readers advertise; the person who
+                // set the password can always do anything with the file)
+
+  function computeO(){
+    let digest = md5(padPdfPassword(new TextEncoder().encode(password)));
+    if(R >= 3){ for(let i=0;i<50;i++) digest = md5(digest.slice(0,keyLenBytes)); }
+    const oKey = digest.slice(0,keyLenBytes);
+    let result = rc4(oKey, padPdfPassword(new TextEncoder().encode(password)));
+    if(R >= 3){
+      for(let i=1;i<=19;i++){
+        const roundKey = new Uint8Array(oKey.length);
+        for(let j=0;j<oKey.length;j++) roundKey[j] = oKey[j] ^ i;
+        result = rc4(roundKey, result);
+      }
+    }
+    return result;
+  }
+  const O = computeO();
+  const fileKey = computePdfEncryptionKey({ password, O, P, idBytes, R, keyLenBytes, encryptMetadata:true });
+  const U = computeUValue(fileKey, idBytes, R);
+
+  const encryptDict = context.obj({
+    Filter: 'Standard', V, R, P,
+    O: PDFHexString.of(bytesToHex(O)),
+    U: PDFHexString.of(bytesToHex(U)),
+    Length: keyLenBytes*8,
+  });
+  const encryptRef = context.register(encryptDict);
+
+  async function encryptWalk(obj, objNum, genNum){
+    if(obj == null || obj === encryptDict) return obj;
+    if(obj instanceof PDFDict){
+      const keys = dictKeys(obj);
+      for(const k of keys){
+        const val = obj.get(k);
+        const nv = await encryptWalk(val, objNum, genNum);
+        if(nv !== undefined && nv !== val) obj.set(k, nv);
+      }
+      return obj;
+    }
+    if(obj instanceof PDFArray){
+      const size = arraySize(obj);
+      for(let i=0;i<size;i++){
+        const val = obj.get(i);
+        const nv = await encryptWalk(val, objNum, genNum);
+        if(nv !== undefined && nv !== val) obj.set(i, nv);
+      }
+      return obj;
+    }
+    if(isStreamLike(obj)){
+      await encryptWalk(obj.dict, objNum, genNum);
+      if(obj.contents && obj.contents.length){
+        const objKey = pdfObjectKey(fileKey, objNum, genNum, false);
+        const enc = rc4(objKey, obj.contents);
+        obj.contents = enc;
+        obj.dict.set(PDFName.of('Length'), PDFNumber.of(enc.length));
+      }
+      return obj;
+    }
+    if(obj instanceof PDFString || obj instanceof PDFHexString){
+      const raw = obj.asBytes();
+      if(!raw.length) return obj;
+      const objKey = pdfObjectKey(fileKey, objNum, genNum, false);
+      const enc = rc4(objKey, raw);
+      return PDFHexString.of(bytesToHex(enc));
+    }
+    return obj;
+  }
+
+  const indirectObjects = context.enumerateIndirectObjects();
+  for(const [ref, obj] of indirectObjects){
+    if(ref.objectNumber === encryptRef.objectNumber) continue;
+    const nv = await encryptWalk(obj, ref.objectNumber, ref.generationNumber);
+    if(nv !== undefined && nv !== obj) context.assign(ref, nv);
+  }
+
+  context.trailerInfo.Encrypt = encryptRef;
+}
+
+/* ---- PDF (read + write via pdf-lib; password-protected PDFs handled via pdf.js) ---- */
+async function parsePDF(file){
+  const buf = await file.arrayBuffer();
+
+  let looksEncrypted = false;
+  try {
+    const head = new TextDecoder('latin1').decode(buf);
+    looksEncrypted = /\/Encrypt\b/.test(head);
+  } catch(e){}
+
+  const { PDFDocument } = PDFLib;
+  let pdfDoc;
+  try {
+    pdfDoc = await PDFDocument.load(buf, {updateMetadata:false, ignoreEncryption:false, throwOnInvalidObject:false});
+  } catch(err){
+    throw new PasswordRequiredError(file);
+  }
+  if(pdfDoc.isEncrypted || looksEncrypted){
+    throw new PasswordRequiredError(file);
+  }
+
+  const title = pdfDoc.getTitle();
+  const author = pdfDoc.getAuthor();
+  const subject = pdfDoc.getSubject();
+  const creator = pdfDoc.getCreator();
+  const producer = pdfDoc.getProducer();
+  const keywords = pdfDoc.getKeywords();
+  const creationDate = pdfDoc.getCreationDate();
+  const modDate = pdfDoc.getModificationDate();
+  const pageCount = pdfDoc.getPageCount();
+  let dims = pageCount + ' page' + (pageCount!==1?'s':'');
+  try {
+    const page = pdfDoc.getPage(0);
+    const {width,height} = page.getSize();
+    dims += ` · ${Math.round(width)}×${Math.round(height)} pt`;
+  } catch(e){}
+
+  const fields = [];
+  pushField(fields, title, {id:'title', cat:'identity', k:'Title', _infoKey:'Title'});
+  pushField(fields, author, {id:'author', cat:'identity', k:'Author', _infoKey:'Author'});
+  pushField(fields, subject, {id:'subject', cat:'identity', k:'Subject', _infoKey:'Subject'});
+  pushField(fields, creator, {id:'creator', cat:'origin', k:'Creator app', _infoKey:'Creator'});
+  pushField(fields, producer, {id:'producer', cat:'origin', k:'Producer', _infoKey:'Producer'});
+  pushField(fields, keywords, {id:'keywords', cat:'content', k:'Keywords', flag:true, _infoKey:'Keywords'});
+  pushField(fields, creationDate && creationDate.toISOString().replace('T',' ').slice(0,19), {id:'created', cat:'timeline', k:'Created', isDate:true, _infoKey:'CreationDate', _isDate:true});
+  pushField(fields, modDate && modDate.toISOString().replace('T',' ').slice(0,19), {id:'modified', cat:'timeline', k:'Modified', isDate:true, _infoKey:'ModDate', _isDate:true});
+  fields.push({id:'encryption', cat:'security', k:'Encryption', v:'None', good:true, editable:false, readonly:true});
+
+  if(fields.filter(f=>f.cat!=='security').length === 0){
+    fields.unshift({id:'no-meta', cat:'identity', k:'Document info', v:'None found in this file', good:true, editable:false, readonly:true});
+  }
+
+  function rawDump(){
+    const lines = ['[<b>Document Info dictionary</b>]'];
+    if(title) lines.push('Title'.padEnd(14)+': '+title);
+    if(author) lines.push('Author'.padEnd(14)+': '+author);
+    if(subject) lines.push('Subject'.padEnd(14)+': '+subject);
+    if(creator) lines.push('Creator'.padEnd(14)+': '+creator);
+    if(producer) lines.push('Producer'.padEnd(14)+': '+producer);
+    if(keywords) lines.push('Keywords'.padEnd(14)+': '+keywords);
+    if(creationDate) lines.push('CreationDate'.padEnd(14)+': '+creationDate.toISOString());
+    if(modDate) lines.push('ModDate'.padEnd(14)+': '+modDate.toISOString());
+    if(lines.length === 1) lines.push('(no document info found)');
+    return lines.join('\n');
+  }
+
+  const notes = [];
+  if(author) notes.push(`This PDF lists <b>${escapeHtml(author)}</b> as the author in its document info.`);
+  if(producer) notes.push(`It was produced with <b>${escapeHtml(producer)}</b> — that trace stays in the file unless removed.`);
+  if(!notes.length) notes.push('No identifying document info was found in this file.');
+  notes.push('No encryption was detected on this file.');
+
+  let previewURL = null;
+  try {
+    if(typeof pdfjsLib !== 'undefined'){
+      const rendered = await renderPdfPageToImage(buf);
+      previewURL = rendered.dataURL;
+    }
+  } catch(e){ previewURL = null; }
+
+  let encryptPassword = null;
+
+  return {
+    sourceKey: 'real-' + Date.now(),
+    name: file.name, typeLabel:'PDF Document', size: humanFileSize(file.size), dims,
+    icon: PDF_ICON, previewType:'document', previewURL,
+    previewText: previewURL ? null : `${pageCount} page${pageCount!==1?'s':''} document — visual page preview isn't available.`,
+    previewOpenURL: URL.createObjectURL(file), previewOpenLabel: 'Open full PDF',
+    scanMsgs:['Reading file structure…','Parsing document info dictionary…','Rendering page preview…','Done — here is what MYRA found.'],
+    fields, rawCmd:`pdfinfo ${file.name}`, raw: rawDump(), notes,
+    ctaSub:'Export a cleaned copy with identity and origin fields removed.',
+    engineNote:'Title, Author, Subject, Creator, Producer, Keywords and dates can all be edited, removed or added when missing. You can also set a password on the exported copy. Your original file is never modified.',
+    canEncrypt: true,
+    setExportPassword(pw){ encryptPassword = pw || null; },
+    hasExportPassword(){ return !!encryptPassword; },
+    exportFn: async ()=>{
+      fields.forEach(f=>{
+        if(!f._infoKey || f.empty) return;
+        if(f.removed){
+          setPdfInfoValue(pdfDoc, f._infoKey, '');
+          return;
+        }
+        if(f._isDate){
+          const pdfDate = toPdfDateString(f.v);
+          if(pdfDate) setPdfInfoValue(pdfDoc, f._infoKey, pdfDate);
+          // if the edited text doesn't parse as a date, leave the original
+          // value untouched rather than writing something that could
+          // corrupt the field
+        } else {
+          setPdfInfoValue(pdfDoc, f._infoKey, f.v);
+        }
+      });
+      if(encryptPassword){
+        await encryptPdfDoc(pdfDoc, encryptPassword);
+      }
+      const bytes = await pdfDoc.save({ useObjectStreams: false });
+      const blob = new Blob([bytes], {type:'application/pdf'});
+      return {blob, filename: file.name};
+    }
+  };
+}
+
+/* ---- Password-protected PDF: unlock, read metadata + real preview via pdf.js (read-only) ---- */
+async function unlockEncryptedPDFReadOnly(file, password, rendered, decryptError){
+  const pdf = rendered.pdf;
+  const { info } = await pdf.getMetadata().catch(()=>({info:{}}));
+  const pageCount = pdf.numPages;
+
+  const fields = [];
+  if(info.Title) fields.push({id:'title', cat:'identity', k:'Title', v:info.Title, editable:false, readonly:true});
+  if(info.Author) fields.push({id:'author', cat:'identity', k:'Author', v:info.Author, editable:false, readonly:true});
+  if(info.Subject) fields.push({id:'subject', cat:'identity', k:'Subject', v:info.Subject, editable:false, readonly:true});
+  if(info.Creator) fields.push({id:'creator', cat:'origin', k:'Creator app', v:info.Creator, editable:false, readonly:true});
+  if(info.Producer) fields.push({id:'producer', cat:'origin', k:'Producer', v:info.Producer, editable:false, readonly:true});
+  if(info.Keywords) fields.push({id:'keywords', cat:'content', k:'Keywords', v:info.Keywords, flag:true, editable:false, readonly:true});
+  const created = parsePdfDate(info.CreationDate);
+  const modified = parsePdfDate(info.ModDate);
+  if(created) fields.push({id:'created', cat:'timeline', k:'Created', v:created, editable:false, readonly:true});
+  if(modified) fields.push({id:'modified', cat:'timeline', k:'Modified', v:modified, editable:false, readonly:true});
+  fields.push({id:'encryption', cat:'security', k:'Encryption', v:'Present (unlocked with password)', flag:true, editable:false, readonly:true});
+
+  if(fields.filter(f=>f.cat!=='security').length === 0){
+    fields.unshift({id:'no-meta', cat:'identity', k:'Document info', v:'None found in this file', good:true, editable:false, readonly:true});
+  }
+
+  const errMsg = decryptError ? (decryptError.stack || decryptError.message || String(decryptError)) : '(no error captured)';
+  const diag = decryptError && decryptError.pdfDiagnostics;
+
+  function rawDump(){
+    const lines = ['[<b>Document Info dictionary</b>] (decrypted)'];
+    Object.keys(info || {}).forEach(k=>{ if(info[k]) lines.push(String(k).padEnd(14)+': '+info[k]); });
+    if(lines.length === 1) lines.push('(no document info found)');
+    lines.push('');
+    lines.push('[<b>Why editing isn\'t available</b>]');
+    lines.push(escapeHtml(errMsg));
+    if(diag){
+      lines.push('');
+      lines.push('[<b>Candidates tried</b>] (every /Encrypt-shaped object found in the file)');
+      lines.push('count'.padEnd(16)+': '+(diag.candidates ? diag.candidates.length : 0));
+      lines.push('object numbers'.padEnd(16)+': '+(diag.candidates ? diag.candidates.join(', ') : 'n/a'));
+      if(diag.attemptsLog && diag.attemptsLog.length){
+        lines.push('');
+        (diag.attemptsLog || []).forEach(l => lines.push(escapeHtml(l)));
+      }
+    }
+    return lines.join('\n');
+  }
+
+  const notes = [];
+  if(info.Author) notes.push(`This PDF lists <b>${escapeHtml(info.Author)}</b> as the author in its document info.`);
+  notes.push('This file was <b>encrypted</b> and required a password to open.');
+  notes.push('This file was unlocked for viewing, but full editing wasn\'t possible. The Raw data tab has the technical reason.');
+
+  return {
+    sourceKey: 'real-' + Date.now(),
+    name: file.name, typeLabel:'PDF Document (unlocked, read-only)', size: humanFileSize(file.size),
+    dims: pageCount + ' page' + (pageCount!==1?'s':''),
+    icon: PDF_ICON, previewType:'document', previewURL: rendered.dataURL,
+    previewOpenURL: URL.createObjectURL(file), previewOpenLabel: 'Open full PDF (password required)',
+    scanMsgs:[],
+    fields, rawCmd:`pdfinfo --password *** ${file.name}`, raw: rawDump(), notes,
+    ctaSub:'Export isn\'t available for this file.',
+    engineNote:'Unlocked for viewing only — full editing wasn\'t possible for this file. The Raw data tab has the technical reason.',
+    readOnlyFormat: true
+  };
+}
+
+async function unlockEncryptedPDF(file, password){
+  const buf = await file.arrayBuffer();
+  let rendered;
+  try {
+    rendered = await renderPdfPageToImage(buf, password);
+  } catch(err){
+    if(err && err.name === 'PasswordException'){
+      throw new Error('Incorrect password — try again.');
+    }
+    throw new Error('Could not unlock this PDF with that password.');
+  }
+
+  // Password confirmed correct (pdf.js opened the page). Now try full
+  // decryption so the file becomes genuinely editable, same as any other
+  // PDF. This is the experimental path — if it fails for any reason, fall
+  // back to the read-only view above rather than losing the unlock entirely.
+  try {
+    const plainBytes = await decryptPdfToPlainBytes(buf, password);
+    const decryptedFile = new File([plainBytes], file.name, {type:'application/pdf'});
+    const result = await parsePDF(decryptedFile);
+    result.typeLabel = 'PDF Document (decrypted)';
+    result.notes = [
+      'This file was <b>password-protected</b> and has been decrypted for editing.',
+      ...result.notes
+    ];
+    result.engineNote = 'This file was password-protected and has been unlocked for editing. Exports are saved unprotected unless you set a new password — check that the exported file opens as expected.';
+    return result;
+  } catch(err){
+    // Full decryption failed — fall back to the read-only pdf.js view.
+    // The reason is shown to the user directly in the Raw data tab
+    // (see unlockEncryptedPDFReadOnly below), not just logged.
+    return unlockEncryptedPDFReadOnly(file, password, rendered, err);
+  }
+}
+
+/* ---- MP4 (custom atom walker, read-only) ---- */
+async function parseMP4(file){
+  const buf = await file.arrayBuffer();
+  const dv = new DataView(buf);
+
+  function findBox(start, end, fourcc){
+    let o = start;
+    while(o < end - 8){
+      const size = dv.getUint32(o);
+      const type = String.fromCharCode(dv.getUint8(o+4),dv.getUint8(o+5),dv.getUint8(o+6),dv.getUint8(o+7));
+      if(type === fourcc) return {start:o, size, dataStart:o+8};
+      if(size < 8) break;
+      o += size;
+    }
+    return null;
+  }
+  function readUint64(o){ return dv.getUint32(o) * 4294967296 + dv.getUint32(o+4); }
+  function macToDate(sec){ const epochDiff = 2082844800; return new Date((sec - epochDiff) * 1000); }
+  // Reverse of macToDate: turns an edited "YYYY-MM-DD HH:MM:SS" value back
+  // into seconds-since-1904, the integer format MP4 actually stores.
+  function dateToMacEpoch(text){
+    const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec((text||'').trim());
+    if(!m) return null;
+    const [,y,mo,d,h,mi,se] = m;
+    const utcMs = Date.UTC(+y, +mo-1, +d, +h, +mi, +se);
+    if(isNaN(utcMs)) return null;
+    return Math.round(utcMs/1000) + 2082844800;
+  }
+  function writeUint64(dvOut, offset, value){
+    dvOut.setUint32(offset, Math.floor(value / 4294967296));
+    dvOut.setUint32(offset+4, value >>> 0);
+  }
+
+  let creation = null, modification = null, timescale = null, durationSec = null;
+  let mvhdVersion = null, creationOffset = null, modificationOffset = null;
+  const moov = findBox(0, buf.byteLength, 'moov');
+  if(moov){
+    const mvhd = findBox(moov.dataStart, moov.dataStart + moov.size - 8, 'mvhd');
+    if(mvhd){
+      const version = dv.getUint8(mvhd.dataStart);
+      mvhdVersion = version;
+      let p = mvhd.dataStart + 4;
+      if(version === 1){
+        creationOffset = p; creation = readUint64(p); p += 8;
+        modificationOffset = p; modification = readUint64(p); p += 8;
+        timescale = dv.getUint32(p); p += 4;
+        const duration = readUint64(p);
+        durationSec = duration / timescale;
+      } else {
+        creationOffset = p; creation = dv.getUint32(p); p += 4;
+        modificationOffset = p; modification = dv.getUint32(p); p += 4;
+        timescale = dv.getUint32(p); p += 4;
+        const duration = dv.getUint32(p);
+        durationSec = duration / timescale;
+      }
+    }
+  }
+
+  const fields = [];
+  if(mvhdVersion !== null){
+    const iso = sec => macToDate(sec).toISOString().replace('T',' ').slice(0,19);
+    pushField(fields, creation && iso(creation), {id:'created', cat:'timeline', k:'Created', isDate:true, _mp4Offset:creationOffset, _mp4Version:mvhdVersion});
+    pushField(fields, modification && iso(modification), {id:'modified', cat:'timeline', k:'Modified', isDate:true, _mp4Offset:modificationOffset, _mp4Version:mvhdVersion});
+  }
+  if(durationSec) fields.push({id:'duration', cat:'timeline', k:'Duration', v: durationSec.toFixed(1)+'s', editable:false, readonly:true});
+  fields.push({id:'encryption', cat:'security', k:'Encryption', v:'None', good:true, editable:false, readonly:true});
+  fields.push({id:'signature', cat:'security', k:'Digital signature', v:'None', good:true, editable:false, readonly:true});
+  if(fields.filter(f=>f.cat!=='security').length === 0){
+    fields.unshift({id:'no-moov', cat:'identity', k:'Container metadata', v:'Could not be parsed from this file', good:true, editable:false, readonly:true});
+  }
+
+  let previewURL = null;
+  try {
+    previewURL = await new Promise((resolve)=>{
+      const v = document.createElement('video');
+      v.preload = 'auto'; v.muted = true; v.playsInline = true;
+      v.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;';
+      const objUrl = URL.createObjectURL(file);
+      v.src = objUrl;
+      document.body.appendChild(v);
+      function cleanup(){ v.remove(); URL.revokeObjectURL(objUrl); }
+      function finish(result){ cleanup(); resolve(result); }
+      v.onloadedmetadata = ()=>{
+        try{ v.currentTime = Math.min(0.3, (v.duration||1)/4); }
+        catch(e){ finish(null); }
+      };
+      v.onseeked = ()=>{
+        try{
+          const canvas = document.createElement('canvas');
+          canvas.width = v.videoWidth || 320; canvas.height = v.videoHeight || 180;
+          canvas.getContext('2d').drawImage(v,0,0,canvas.width,canvas.height);
+          finish(canvas.toDataURL('image/jpeg', 0.82));
+        } catch(e){ finish(null); }
+      };
+      v.onerror = ()=>finish(null);
+      setTimeout(()=>finish(null), 5000);
+    });
+  } catch(e){ previewURL = null; }
+
+  function rawDump(){
+    const lines = ['[<b>moov/mvhd</b>]'];
+    if(creation) lines.push('creation_time'.padEnd(16)+': '+macToDate(creation).toISOString());
+    if(modification) lines.push('modification_time'.padEnd(16)+': '+macToDate(modification).toISOString());
+    if(timescale) lines.push('timescale'.padEnd(16)+': '+timescale);
+    if(durationSec) lines.push('duration'.padEnd(16)+': '+durationSec.toFixed(2)+'s');
+    if(lines.length === 1) lines.push('(moov/mvhd box not found)');
+    return lines.join('\n');
+  }
+
+  const notes = [];
+  if(creation) notes.push(`This video's container reports a creation time of <b>${macToDate(creation).toLocaleString()}</b>.`);
+  notes.push('Created and Modified can be edited or cleared. Duration is structural, not editable — changing it without touching the actual video data would desync playback.');
+
+  return {
+    sourceKey: 'real-' + Date.now(),
+    name: file.name, typeLabel:'MP4 Video', size: humanFileSize(file.size), dims: durationSec ? durationSec.toFixed(1)+'s' : '',
+    icon: MP4_ICON, previewType: 'video', previewURL, previewOpenURL: URL.createObjectURL(file), previewOpenLabel: 'Open in new tab',
+    scanMsgs:['Reading container structure…','Walking moov/mvhd atoms…','Grabbing a preview frame…','Done — here is what MYRA found.'],
+    fields, rawCmd:`mp4box -info ${file.name}`, raw: rawDump(), notes,
+    ctaSub:'Export a cleaned copy with the container timestamps edited or removed.',
+    engineNote:'Created/Modified are stored as fixed-width numbers inside the file, so edits are written back in place — no re-encoding, nothing else in the file changes.',
+    exportFn: async ()=>{
+      const outBuf = buf.slice(0);
+      const outDv = new DataView(outBuf);
+      fields.forEach(f=>{
+        if(f._mp4Offset == null || f.empty) return;
+        const epochVal = f.removed ? 0 : dateToMacEpoch(f.v);
+        if(epochVal == null) return; // unparseable edit — leave original bytes untouched
+        if(f._mp4Version === 1) writeUint64(outDv, f._mp4Offset, epochVal);
+        else outDv.setUint32(f._mp4Offset, epochVal >>> 0);
+      });
+      const blob = new Blob([outBuf], {type: file.type || 'video/mp4'});
+      return {blob, filename: file.name};
+    }
+  };
+}
+
+/* ---- dispatcher ---- */
+function detectExt(filename){
+  const m = filename.toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m ? m[1] : '';
+}
+async function detectAndParse(file){
+  const ext = detectExt(file.name);
+  if(ext === 'jpg' || ext === 'jpeg') return await parseJPG(file);
+  if(ext === 'png') return await parsePNG(file);
+  if(ext === 'docx') return await parseDOCX(file);
+  if(ext === 'pdf') return await parsePDF(file);
+  if(ext === 'mp4') return await parseMP4(file);
+  const err = new Error(`".${ext || '?'}" isn't a supported format yet. MYRA currently reads JPG, PNG, PDF, DOCX and MP4.`);
+  err.unsupported = true;
+  throw err;
+}
+
+/* ================================================================
+   STATE / RENDERING
+   ================================================================ */
+// The whole app's state lives in these three variables — no framework,
+// no store, just plain JS. activeFile is whatever parser's result object
+// (see the field-shape comment above) is currently showing on screen;
+// everything else re-renders FROM it, never the other way round.
+let activeFile = null;       // the currently open file's parsed result, or null if none is open
+
+// Look up one field on the currently open file by its id (e.g. 'author').
+function getField(id){ return activeFile ? activeFile.fields.find(f => f.id === id) : undefined; }
+
+function fgIconSVG(name){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${CAT_ICONS[name]}</svg>`; }
+
+const PREVIEW_SVG = {
+  photo: `<svg viewBox="0 0 230 172" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0.5" y="0.5" width="229" height="171" fill="var(--bg)"/>
+    <circle cx="178" cy="38" r="12" stroke="var(--text-3)" stroke-width="1.3"/>
+    <path d="M-2 138l52-46 34 28 40-52 60 50 48-34v78H-2z" stroke="var(--text-2)" stroke-width="1.4" stroke-linejoin="round"/>
+    <line x1="0" y1="138" x2="230" y2="138" stroke="var(--text-3)" stroke-width="1.2"/>
+  </svg>`,
+  document: `<svg viewBox="0 0 230 172" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0.5" y="0.5" width="229" height="171" fill="var(--bg)"/>
+    <rect x="24" y="18" width="182" height="136" rx="2" stroke="var(--text-3)" stroke-width="1.2"/>
+    <line x1="40" y1="38" x2="120" y2="38" stroke="var(--text-2)" stroke-width="2"/>
+    <line x1="40" y1="58" x2="190" y2="58" stroke="var(--text-3)" stroke-width="1.1"/>
+    <line x1="40" y1="70" x2="190" y2="70" stroke="var(--text-3)" stroke-width="1.1"/>
+    <line x1="40" y1="82" x2="150" y2="82" stroke="var(--text-3)" stroke-width="1.1"/>
+    <line x1="40" y1="100" x2="190" y2="100" stroke="var(--text-3)" stroke-width="1.1"/>
+    <line x1="40" y1="112" x2="190" y2="112" stroke="var(--text-3)" stroke-width="1.1"/>
+    <line x1="40" y1="124" x2="170" y2="124" stroke="var(--text-3)" stroke-width="1.1"/>
+  </svg>`
+};
+
+function renderPreview(sample){
+  let inner;
+  if(sample.previewType === 'video' && sample.previewOpenURL){
+    const posterAttr = sample.previewURL ? ` poster="${sample.previewURL}"` : '';
+    inner = `<video controls playsinline preload="metadata"${posterAttr}><source src="${sample.previewOpenURL}"></video>`;
+  } else if(sample.previewURL){
+    const fallback = (PREVIEW_SVG[sample.previewType] || PREVIEW_SVG.document).replace(/"/g,'&quot;');
+    const img = `<img src="${sample.previewURL}" alt="File preview" onerror="this.parentElement.innerHTML='${fallback}'">`;
+    inner = sample.previewOpenURL
+      ? `<a href="${sample.previewOpenURL}" target="_blank" rel="noopener" title="Open full size in a new tab">${img}</a>`
+      : img;
+  } else if(sample.previewText){
+    inner = `<div class="preview-textbox">${escapeHtml(sample.previewText) || '(no extractable text)'}</div>`;
+  } else {
+    inner = PREVIEW_SVG[sample.previewType] || PREVIEW_SVG.document;
+  }
+  const openLink = sample.previewOpenURL
+    ? `<a class="preview-open-link" href="${sample.previewOpenURL}" target="_blank" rel="noopener">
+         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 4h6v6M10 14L20 4M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></svg>
+         ${sample.previewOpenLabel || 'Open in new tab'}
+       </a>`
+    : '';
+  const engineNote = sample.engineNote ? `<div class="engine-note">${sample.engineNote}</div>` : '';
+  return `
+    <div class="preview-block">
+      <div class="preview-eyebrow">Preview</div>
+      <div class="preview-frame">${inner}</div>
+      ${openLink}
+      ${engineNote}
+    </div>`;
+}
+
+// Draws the "Overview" tab: groups sample.fields by category (identity,
+// origin, timeline, content, security — in that fixed order), skipping
+// any category with nothing in it. Read-only display — editing happens
+// in the Editor tab (renderEditor below); this just reflects the data.
+function renderFindings(sample){
+  const panel = document.getElementById('findingsPanel');
+  const groupsHTML = CATEGORY_ORDER.map((cat,gi) => {
+    const meta = CATEGORY_META[cat];
+    const rows = sample.fields.filter(f => f.cat === cat && !f.empty);   // unset fields live only in the editor
+    if(!rows.length) return '';
+    let securityAction = '';
+    if(cat === 'security' && sample.canEncrypt && !sample.readOnlyFormat){
+      const isSet = sample.hasExportPassword && sample.hasExportPassword();
+      securityAction = `
+      <button class="sec-password-btn" data-action="add-password" type="button" title="${isSet ? 'Change or remove the export password' : 'Password-protect the exported file'}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        <span>${isSet ? 'Password set — change or remove' : 'Add password to export'}</span>
+      </button>`;
+    }
+    return `
+    <div class="finding-group" style="animation-delay:${gi*0.06}s">
+      <div class="fg-head">
+        <div class="fg-icon">${fgIconSVG(meta.icon)}</div>
+        <div class="fg-title">${meta.title}</div>
+      </div>
+      <div class="fg-list">
+        ${rows.map((r,ri) => `
+          <div class="fg-row" style="animation-delay:${gi*0.06 + ri*0.03}s">
+            <span class="k">${escapeHtml(r.k)}</span>
+            <span class="v ${r.removed ? 'removed' : (r.flag?'flag':'')} ${!r.removed && r.good?'good':''}">
+              ${!r.removed && r.flag ? FLAG_ICON : ''}${!r.removed && r.good ? GOOD_ICON : ''}<span class="vlabel">${r.removed ? 'Removed' : escapeHtml(r.v)}</span>
+            </span>
+          </div>`).join('')}
+      </div>
+      ${securityAction}
+    </div>`;
+  }).join('');
+  panel.innerHTML = renderPreview(sample) + groupsHTML;
+}
+
+// One <tr> for the Editor table. A field renders one of three ways,
+// depending on its state — this is where the "edit/readonly/removed"
+// rules from the field-shape comment actually take visual effect:
+//   removed  -> "— removed —" text + an Undo link
+//   readonly -> the value, with no buttons (can't touch it, by design)
+//   normal   -> the value, with Edit (pencil) and Remove (trash) buttons
+function editorRowHTML(r, delay){
+  const style = `style="animation-delay:${delay}s"`;
+  if(r.removed){
+    return `
+    <tr data-row data-fid="${r.id}" class="removed" ${style}>
+      <td class="prop">${escapeHtml(r.k)}</td>
+      <td class="val removed-val">— removed —</td>
+      <td class="row-actions"><button class="undo-link" data-undo="${r.id}">Undo</button></td>
+    </tr>`;
+  }
+  if(r.empty){
+    return `
+    <tr data-row data-fid="${r.id}" class="is-empty" ${style}>
+      <td class="prop">${escapeHtml(r.k)}</td>
+      <td class="val val-empty" data-val>Not set</td>
+      <td class="row-actions"><button class="add-link" data-edit="${r.id}" type="button" title="Add ${escapeHtml(r.k)}">+ Add</button></td>
+    </tr>`;
+  }
+  if(r.readonly){
+    return `
+    <tr data-row data-fid="${r.id}" ${style}>
+      <td class="prop">${r.flag ? FLAG_ICON : ''}${escapeHtml(r.k)}</td>
+      <td class="val" data-val>${escapeHtml(r.v)}</td>
+      <td class="row-actions"><span class="field-readonly-tag">read-only</span></td>
+    </tr>`;
+  }
+  return `
+    <tr data-row data-fid="${r.id}" ${style}>
+      <td class="prop">${r.flag ? FLAG_ICON : ''}${escapeHtml(r.k)}</td>
+      <td class="val" data-val>${escapeHtml(r.v)}</td>
+      <td class="row-actions">
+        <button class="icon-btn" data-edit="${r.id}" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z"/></svg></button>
+        <button class="icon-btn danger" data-remove="${r.id}" title="Remove this field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+      </td>
+    </tr>`;
+}
+
+// Draws the "Metadata editor" tab — same grouping-by-category as
+// renderFindings, but every field becomes a real table row via
+// editorRowHTML above, so it can actually be edited/removed/undone.
+function renderEditor(sample){
+  const body = document.getElementById('metaTableBody');
+  if(sample.readOnlyFormat){
+    body.innerHTML = `<tr><td colspan="3" style="padding:16px;color:var(--text-3);font-style:italic;">This file is read-only — see the Overview tab for what MYRA found.</td></tr>`;
+    return;
+  }
+  let i = 0;
+  body.innerHTML = CATEGORY_ORDER.map(cat => {
+    const meta = CATEGORY_META[cat];
+    const rows = sample.fields.filter(f => f.cat === cat);
+    if(!rows.length) return '';
+    const catRow = `<tr class="cat-row" style="animation-delay:${i*0.03}s"><td colspan="3">${meta.title}</td></tr>`;
+    i++;
+    const fieldRows = rows.map(r => { const html = editorRowHTML(r, i*0.03); i++; return html; }).join('');
+    return catRow + fieldRows;
+  }).join('');
+}
+
+// Draws the "Raw data" tab — just the raw text each parser already built
+// (sample.raw), plus the fake command-line label (sample.rawCmd) that
+// makes it read like a terminal dump. Nothing generic here; each parser
+// writes its own raw text in its own parseXxx() function.
+function renderRaw(sample){
+  document.getElementById('rawBoxCmd').textContent = sample.rawCmd;
+  document.getElementById('rawBoxContent').innerHTML = sample.raw;
+}
+
+function renderHeader(sample){
+  document.getElementById('fileIcon').innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">${sample.icon}</svg>`;
+  document.getElementById('fileName').textContent = sample.name;
+  document.getElementById('fileSub').textContent = [sample.typeLabel, sample.size, sample.dims].filter(Boolean).join(' · ');
+  setStatus(sample.name);
+  const exportBtn = document.getElementById('exportBtn');
+  if(sample.readOnlyFormat){
+    exportBtn.disabled = true; exportBtn.title = 'Export not available for this format yet';
+  } else {
+    exportBtn.disabled = false; exportBtn.title = '';
+  }
+}
+
+// Called after ANY edit/remove/undo — re-draws Overview and Editor from
+// activeFile.fields so both tabs always agree with each other. This is
+// the one place that keeps "editing" and "viewing" in sync: nothing
+// mutates the DOM directly when you edit a field, it mutates the data
+// (field.v / field.removed) and then calls this to redraw from scratch.
+function refreshViews(){
+  renderFindings(activeFile);
+  renderEditor(activeFile);
+}
+
+// Called once, right after a file finishes parsing: sets it as
+// activeFile and draws every tab.
+function renderAllFromFile(sample){
+  activeFile = sample;
+  renderHeader(sample);
+  renderFindings(sample);
+  renderEditor(sample);
+  renderRaw(sample);
+}
+
+/* ================================================================
+   FLOW: landing -> scanning -> results
+   ================================================================ */
+const landingView = document.getElementById('landingView');
+const appView = document.getElementById('appView');
+const scanState = document.getElementById('scanState');
+const errorState = document.getElementById('errorState');
+const passwordState = document.getElementById('passwordState');
+const resultsState = document.getElementById('resultsState');
+const scanStatus = document.getElementById('scanStatus');
+const scanFileLabel = document.getElementById('scanFileLabel');
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+document.getElementById('pwOwl').innerHTML = owlSVG(44,false);
+
+function playScanMessages(msgs, fast){
+  return new Promise(resolve=>{
+    if(!msgs || !msgs.length){ resolve(); return; }
+    let i = 0;
+    scanStatus.textContent = msgs[0];
+    const step = fast ? 320 : 550;
+    const iv = setInterval(()=>{
+      i++;
+      if(i < msgs.length){ scanStatus.textContent = msgs[i]; }
+      else { clearInterval(iv); setTimeout(resolve, 350); }
+    }, step);
+  });
+}
+
+function showError(message, filename){
+  landingView.style.display = 'none';
+  appView.style.display = 'flex';
+  scanState.style.display = 'none';
+  resultsState.style.display = 'none';
+  passwordState.style.display = 'none';
+  errorState.style.display = 'flex';
+  document.getElementById('errorDetail').textContent = message;
+  setStatus(filename ? `Couldn't read ${filename}` : 'No file loaded');
+}
+
+let pendingPasswordFile = null;
+function showPasswordPrompt(file){
+  landingView.style.display = 'none';
+  appView.style.display = 'flex';
+  scanState.style.display = 'none';
+  errorState.style.display = 'none';
+  resultsState.style.display = 'none';
+  passwordState.style.display = 'flex';
+  pendingPasswordFile = file;
+  document.getElementById('pwFileLabel').textContent = `${file.name} — ${humanFileSize(file.size)}`;
+  document.getElementById('pwInput').value = '';
+  document.getElementById('pwError').textContent = '';
+  setStatus('Password required');
+  setTimeout(()=>document.getElementById('pwInput').focus(), 60);
+}
+
+async function attemptUnlock(){
+  const password = document.getElementById('pwInput').value;
+  if(!pendingPasswordFile) return;
+  const btn = document.getElementById('pwUnlockBtn');
+  const original = btn.textContent;
+  btn.textContent = 'Unlocking…'; btn.disabled = true;
+  document.getElementById('pwError').textContent = '';
+  try {
+    const result = await unlockEncryptedPDF(pendingPasswordFile, password);
+    passwordState.style.display = 'none';
+    resultsState.style.display = 'flex';
+    renderAllFromFile(result);
+  } catch(err){
+    document.getElementById('pwError').textContent = err.message || 'Incorrect password — try again.';
+    btn.textContent = original; btn.disabled = false;
+    const input = document.getElementById('pwInput');
+    input.focus(); input.select();
+  }
+}
+document.getElementById('pwUnlockBtn').addEventListener('click', attemptUnlock);
+document.getElementById('pwInput').addEventListener('keydown', e=>{ if(e.key==='Enter') attemptUnlock(); });
+document.getElementById('pwCancelBtn').addEventListener('click', ()=>{
+  passwordState.style.display = 'none';
+  appView.style.display = 'none';
+  landingView.style.display = 'flex';
+  pendingPasswordFile = null;
+  setStatus('No file loaded');
+});
+
+async function handleIncomingFile(file){
+  if(!file) return;
+  landingView.style.display = 'none';
+  appView.style.display = 'flex';
+  errorState.style.display = 'none';
+  passwordState.style.display = 'none';
+  resultsState.style.display = 'none';
+  scanState.style.display = 'flex';
+  setStatus('Analyzing…');
+  scanFileLabel.textContent = `${file.name} — ${humanFileSize(file.size)}`;
+  const genericMsgs = ['Reading file…','Parsing metadata…','Checking for hidden content…'];
+  const minWait = playScanMessages(genericMsgs, false);
+  try {
+    const [result] = await Promise.all([detectAndParse(file), minWait]);
+    scanState.style.display = 'none';
+    resultsState.style.display = 'flex';
+    renderAllFromFile(result);
+  } catch(err){
+    await minWait;
+    scanState.style.display = 'none';
+    if(err && err.needsPassword){
+      showPasswordPrompt(err.file || file);
+    } else {
+      showError(err.message || 'This file could not be parsed — it may be corrupted or in an unexpected format.', file.name);
+    }
+  }
+}
+
+dropzone.addEventListener('click', ()=> fileInput.click());
+dropzone.addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); fileInput.click(); }});
+document.getElementById('browseBtn').addEventListener('click', (e)=>{ e.stopPropagation(); fileInput.click(); });
+fileInput.addEventListener('change', ()=>{
+  if(fileInput.files && fileInput.files[0]) handleIncomingFile(fileInput.files[0]);
+  fileInput.value = '';
+});
+['dragover'].forEach(evt=>dropzone.addEventListener(evt, e=>{e.preventDefault(); dropzone.classList.add('drag');}));
+['dragleave'].forEach(evt=>dropzone.addEventListener(evt, e=>{e.preventDefault(); dropzone.classList.remove('drag');}));
+dropzone.addEventListener('drop', e=>{
+  e.preventDefault(); dropzone.classList.remove('drag');
+  if(e.dataTransfer.files && e.dataTransfer.files[0]) handleIncomingFile(e.dataTransfer.files[0]);
+});
+document.getElementById('errorRetryBtn').addEventListener('click', ()=>{
+  errorState.style.display = 'none';
+  appView.style.display = 'none';
+  landingView.style.display = 'flex';
+  setStatus('No file loaded');
+});
+
+/* ---------------- Sidebar: logo + wordmark doubles as the Home button ---------------- */
+function goHome(){
+  resultsState.style.display = 'none';
+  scanState.style.display = 'none';
+  errorState.style.display = 'none';
+  passwordState.style.display = 'none';
+  appView.style.display = 'none';
+  landingView.style.display = 'flex';
+  setStatus('No file loaded');
+}
+document.getElementById('sidebarBrand').addEventListener('click', goHome);
+document.getElementById('sidebarBrand').addEventListener('keydown', e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); goHome(); }});
+
+/* ---------------- PDF export password modal ---------------- */
+const lockOverlay = document.getElementById('lockOverlay');
+function openLockModal(){
+  if(!activeFile) return;
+  document.getElementById('lockPwInput').value = '';
+  document.getElementById('lockPwConfirm').value = '';
+  document.getElementById('lockPwError').textContent = '';
+  const isSet = activeFile.hasExportPassword && activeFile.hasExportPassword();
+  document.getElementById('lockRemoveBtn').style.display = isSet ? '' : 'none';
+  document.getElementById('lockSaveBtn').textContent = isSet ? 'Update password' : 'Set password';
+  lockOverlay.classList.add('show');
+  setTimeout(()=>document.getElementById('lockPwInput').focus(), 60);
+}
+function closeLockModal(){ lockOverlay.classList.remove('show'); }
+// The Add-password button lives inside the Security section, which is
+// regenerated from scratch on every render (see renderFindings) — so it
+// can't be wired up once at page load like a static button. Delegate the
+// click to the panel it's rendered into instead.
+document.getElementById('findingsPanel').addEventListener('click', (e)=>{
+  if(e.target.closest('[data-action="add-password"]')) openLockModal();
+});
+document.getElementById('lockClose').addEventListener('click', closeLockModal);
+lockOverlay.addEventListener('click', (e)=>{ if(e.target === lockOverlay) closeLockModal(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLockModal(); });
+document.getElementById('lockSaveBtn').addEventListener('click', ()=>{
+  const pw = document.getElementById('lockPwInput').value;
+  const confirm = document.getElementById('lockPwConfirm').value;
+  const errEl = document.getElementById('lockPwError');
+  if(!pw){ errEl.textContent = 'Enter a password.'; return; }
+  if(pw !== confirm){ errEl.textContent = "Passwords don't match."; return; }
+  if(activeFile.setExportPassword) activeFile.setExportPassword(pw);
+  closeLockModal();
+  renderHeader(activeFile);
+  showToast('Password set — it will be applied when you export.');
+});
+document.getElementById('lockRemoveBtn').addEventListener('click', ()=>{
+  if(activeFile.setExportPassword) activeFile.setExportPassword(null);
+  closeLockModal();
+  renderHeader(activeFile);
+  showToast('Export password removed.');
+});
+
+/* ---------------- Segmented tab switch ---------------- */
+document.querySelectorAll('.seg-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.seg-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('findingsPanel').classList.toggle('show', tab==='overview');
+    document.getElementById('editorPanel').classList.toggle('show', tab==='editor');
+    document.getElementById('rawPanel').classList.toggle('show', tab==='raw');
+  });
+});
+
+/* ---------------- Editor: inline edit + per-row remove/undo (data-driven) ---------------- */
+document.getElementById('metaTableBody').addEventListener('click', (e)=>{
+  const editBtn = e.target.closest('[data-edit]');
+  const removeBtn = e.target.closest('[data-remove]');
+  const undoBtn = e.target.closest('[data-undo]');
+
+  if(editBtn){
+    const fieldId = editBtn.dataset.edit;
+    const row = editBtn.closest('tr');
+    if(row.classList.contains('editing')) return;
+    row.classList.add('editing');
+    const valCell = row.querySelector('[data-val]');
+    const target = getField(fieldId);
+    const isEmpty = !!(target && target.empty);
+    const currentVal = isEmpty ? '' : valCell.textContent;
+    const ph = target && target.isDate ? 'YYYY-MM-DD HH:MM:SS' : 'Enter a value';
+    valCell.innerHTML = `<input type="text" value="${currentVal.replace(/"/g,'&quot;')}" placeholder="${ph}">`;
+    const input = valCell.querySelector('input');
+    input.focus(); input.select();
+    function commit(){
+      const field = getField(fieldId);
+      const typed = input.value.trim();
+      if(field && typed){
+        let val = typed;
+        if(field.isDate){
+          val = normalizeDateInput(typed);
+          if(!val){ showToast('Dates need the format YYYY-MM-DD HH:MM:SS'); refreshViews(); return; }
+        }
+        field.v = val; field.empty = false;
+      }
+      refreshViews();
+    }
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', ev=>{ if(ev.key==='Enter') input.blur(); if(ev.key==='Escape'){ input.removeEventListener('blur', commit); refreshViews(); } });
+  }
+
+  if(removeBtn){
+    const f = getField(removeBtn.dataset.remove);
+    if(f){
+      // a field the file never had just goes back to "Not set" instead of showing as removed
+      if(f._origEmpty){ f.v = ''; f.empty = true; f.removed = false; }
+      else f.removed = true;
+    }
+    refreshViews();
+  }
+
+  if(undoBtn){
+    const f = getField(undoBtn.dataset.undo);
+    if(f) f.removed = false;
+    refreshViews();
+  }
+});
+
+/* ---------------- Global "Remove flagged metadata" + undo toast (data-driven) ---------------- */
+const toast = document.getElementById('toast');
+const toastMsg = document.getElementById('toastMsg');
+let toastTimer = null;
+
+function showToast(msg){
+  toastMsg.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toast.classList.remove('show'), 5000);
+}
+
+
+/* ---------------- Export ---------------- */
+function flashLabel(btn, original, label, ms){
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 12l4 4L19 6"/></svg> ${label}`;
+  btn.disabled = true;
+  setTimeout(()=>{
+    btn.innerHTML = original;
+    btn.disabled = activeFile.readOnlyFormat === true;
+  }, ms || 1800);
+}
+document.getElementById('exportBtn').addEventListener('click', async function(){
+  if(!activeFile || activeFile.readOnlyFormat) return;
+  const btn = this;
+  const original = btn.innerHTML;
+  if(activeFile.exportFn){
+    btn.innerHTML = 'Exporting…'; btn.disabled = true;
+    try {
+      const {blob, filename} = await activeFile.exportFn();
+      await downloadBlob(blob, filename);
+      flashLabel(btn, original, 'Downloaded');
+    } catch(err){
+      btn.innerHTML = original; btn.disabled = false;
+      showToast('Export failed: ' + (err.message || 'unknown error'));
+    }
+  }
+});
+
+/* ---------------- Theme toggle ---------------- */
+const themeToggle = document.getElementById('themeToggle');
+const sunIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M4.6 4.6l1.7 1.7M17.7 17.7l1.7 1.7M2.5 12h2.4M19.1 12h2.4M4.6 19.4l1.7-1.7M17.7 6.3l1.7-1.7"/></svg>';
+const moonIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>';
+function setTheme(mode){
+  document.documentElement.setAttribute('data-theme', mode);
+  themeToggle.innerHTML = mode === 'dark' ? sunIcon : moonIcon;
+}
+setTheme('dark');
+themeToggle.addEventListener('click', ()=>{
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  setTheme(isDark ? 'light' : 'dark');
+  document.body.classList.remove('theme-blinking');
+  themeToggle.classList.remove('blink');
+  void themeToggle.offsetWidth; // restart the CSS animation even if the class was already present
+  document.body.classList.add('theme-blinking');
+  themeToggle.classList.add('blink');
+  setTimeout(()=>{
+    document.body.classList.remove('theme-blinking');
+    themeToggle.classList.remove('blink');
+  }, 520);
+});
+</script>
+</body>
+</html>
